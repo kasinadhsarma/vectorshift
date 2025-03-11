@@ -46,15 +46,35 @@ export default function SignUpPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 409) {
+          toast({
+            title: "Account exists",
+            description: "An account with this email already exists. Please log in instead.",
+            variant: "destructive",
+          })
+          router.push("/login")
+          return
+        }
         throw new Error(data.detail || "Sign up failed")
       }
 
+      // Store the token and user info
+      document.cookie = `authToken=${data.token}; path=/; SameSite=Strict; Secure`
+      localStorage.setItem("authToken", data.token)
+      localStorage.setItem("userInfo", JSON.stringify(data.user))
+
       toast({
         title: "Account created",
-        description: "Please log in with your new account.",
+        description: "Welcome to VectorAI Task!",
       })
 
-      router.push("/login")
+      // Force navigation to dashboard with replace to prevent back navigation
+      router.replace("/dashboard")
+      
+      // Additional fallback to ensure navigation
+      setTimeout(() => {
+        window.location.href = "/dashboard"
+      }, 100)
     } catch (error) {
       toast({
         title: "Sign up failed",

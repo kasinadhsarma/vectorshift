@@ -45,22 +45,39 @@ export default function LoginPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        // For 401 errors, show user-friendly message
+        if (response.status === 401) {
+          toast({
+            title: "Login failed",
+            description: "Invalid email or password. Please try again.",
+            variant: "destructive",
+          })
+          return
+        }
         throw new Error(data.detail || "Login failed")
       }
 
-      // Store the token in both localStorage and cookie with additional security
+      // Store the token and user info
       document.cookie = `authToken=${data.token}; path=/; SameSite=Strict; Secure`
       localStorage.setItem("authToken", data.token)
+      localStorage.setItem("userInfo", JSON.stringify(data.user))
 
       toast({
         title: "Login successful",
         description: "Welcome back to VectorAI Task!",
       })
 
-      // Redirect to returnUrl if exists, otherwise to dashboard
+      // Get return URL before redirection
       const returnUrl = localStorage.getItem("returnUrl")
       localStorage.removeItem("returnUrl") // Clean up
-      router.push(returnUrl || "/dashboard")
+
+      // Force navigation to dashboard with replace to prevent back navigation
+      router.replace(returnUrl || "/dashboard")
+      
+      // Additional fallback to ensure navigation
+      setTimeout(() => {
+        window.location.href = returnUrl || "/dashboard"
+      }, 100)
     } catch (error) {
       toast({
         title: "Login failed",

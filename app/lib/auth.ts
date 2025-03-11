@@ -1,14 +1,16 @@
 export const getAuthToken = () => {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('authToken')
+  return localStorage.getItem('authToken') || document.cookie.replace(/(?:(?:^|.*;\s*)authToken\s*\=\s*([^;]*).*$)|^.*$/, "$1")
 }
 
 export const setAuthToken = (token: string) => {
   localStorage.setItem('authToken', token)
+  document.cookie = `authToken=${token}; path=/; SameSite=Strict; Secure`
 }
 
 export const removeAuthToken = () => {
   localStorage.removeItem('authToken')
+  document.cookie = 'authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;'
 }
 
 export const isAuthenticated = () => {

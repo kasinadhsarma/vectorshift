@@ -29,8 +29,19 @@ class PasswordUpdate(BaseModel):
 async def signup(user: UserCreate):
     try:
         user_id = cassandra.create_user(user.email, user.password)
-        return {"message": "User created successfully", "user_id": str(user_id)}
+        # After successful creation, immediately log them in
+        auth_data = cassandra.verify_user(user.email, user.password)
+        return {
+            "message": "User created successfully",
+            "user_id": str(user_id),
+            "token": auth_data["token"],
+            "user": {
+                "email": user.email
+            }
+        }
     except ValueError as e:
+        if "User already exists" in str(e):
+            raise HTTPException(status_code=409, detail="User already exists")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -39,7 +50,13 @@ async def signup(user: UserCreate):
 async def login(user: UserLogin):
     try:
         auth_data = cassandra.verify_user(user.email, user.password)
-        return auth_data
+        # Include user information in response
+        return {
+            **auth_data,
+            "user": {
+                "email": user.email
+            }
+        }
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:

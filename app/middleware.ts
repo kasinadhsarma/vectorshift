@@ -8,7 +8,7 @@ export function middleware(request: NextRequest) {
 
   // Check if the path requires authentication
   if (requiresAuth(pathname)) {
-    const token = request.cookies.get('authToken')?.value
+    const token = request.cookies.get('authToken')?.value || request.headers.get('authorization')?.replace('Bearer ', '')
 
     // If there's no token and trying to access protected route,
     // redirect to login page with return URL
@@ -17,14 +17,21 @@ export function middleware(request: NextRequest) {
       url.searchParams.set('returnUrl', pathname)
       return NextResponse.redirect(url)
     }
+
+    // Add token to response headers for client access
+    const response = NextResponse.next()
+    response.headers.set('x-auth-token', token)
+    return response
   }
 
   // If user is authenticated and tries to access auth pages (login, signup),
   // redirect to dashboard
   if (['/login', '/signup', '/forgot-password'].includes(pathname)) {
-    const token = request.cookies.get('authToken')?.value
+    const token = request.cookies.get('authToken')?.value || request.headers.get('authorization')?.replace('Bearer ', '')
     if (token) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      const response = NextResponse.redirect(new URL('/dashboard', request.url))
+      response.headers.set('x-auth-token', token)
+      return response
     }
   }
 

@@ -45,8 +45,9 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.token && event.data.user) {
-        // Store token and user data
-        localStorage.setItem("authToken", event.data.token)  // Use same key as regular login
+        // Store token and user data with enhanced security
+        localStorage.setItem("authToken", event.data.token)
+        document.cookie = `authToken=${event.data.token}; path=/; SameSite=Strict; Secure`
         localStorage.setItem("googleUser", JSON.stringify(event.data.user))
 
         // Update state
@@ -59,8 +60,13 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
           description: `Welcome, ${event.data.user.name}!`,
         })
 
-        // Redirect to dashboard
-        router.push("/dashboard")
+        // Force navigation to dashboard with replace to prevent back navigation
+        router.replace("/dashboard")
+        
+        // Additional fallback to ensure navigation
+        setTimeout(() => {
+          window.location.href = "/dashboard"
+        }, 100)
       }
     }
 
