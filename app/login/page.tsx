@@ -48,8 +48,8 @@ export default function LoginPage() {
         throw new Error(data.detail || "Login failed")
       }
 
-      // Store the token in both localStorage and cookie
-      document.cookie = `authToken=${data.token}; path=/;`
+      // Store the token in both localStorage and cookie with additional security
+      document.cookie = `authToken=${data.token}; path=/; SameSite=Strict; Secure`
       localStorage.setItem("authToken", data.token)
 
       toast({

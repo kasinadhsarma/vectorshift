@@ -32,7 +32,7 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
 
   // Check for existing token on mount
   useEffect(() => {
-    const token = localStorage.getItem("googleToken")
+    const token = localStorage.getItem("authToken") // Use same key as regular login
     if (token) {
       const userData = localStorage.getItem("googleUser")
       if (userData) {
@@ -46,7 +46,7 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
     const handleMessage = (event: MessageEvent) => {
       if (event.data.token && event.data.user) {
         // Store token and user data
-        localStorage.setItem("googleToken", event.data.token)
+        localStorage.setItem("authToken", event.data.token)  // Use same key as regular login
         localStorage.setItem("googleUser", JSON.stringify(event.data.user))
 
         // Update state
@@ -113,7 +113,7 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = () => {
-    localStorage.removeItem("googleToken")
+    localStorage.removeItem("authToken") // Use same key as regular login
     localStorage.removeItem("googleUser")
     setUser(null)
     router.push("/login")

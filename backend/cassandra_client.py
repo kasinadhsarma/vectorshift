@@ -1,4 +1,3 @@
-from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
 import os
 import uuid
@@ -6,6 +5,7 @@ import bcrypt
 from datetime import datetime, timedelta
 import jwt
 import logging
+from cassandra.cluster import Cluster
 from cassandra.policies import DCAwareRoundRobinPolicy
 
 # Configure logging
@@ -27,7 +27,8 @@ class CassandraClient:
             cluster_params = {
                 'contact_points': [host],
                 'port': port,
-                'protocol_version': 4  # More compatible version
+                'protocol_version': 4,  # More compatible version
+                'load_balancing_policy': DCAwareRoundRobinPolicy(local_dc='datacenter1') # Adding load balancing policy
             }
             
             # Only add auth_provider if we're not connecting to the local development Cassandra

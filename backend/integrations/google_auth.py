@@ -67,7 +67,15 @@ async def google_auth_callback(request: Request):
         
         # Verify state
         saved_state = await get_value_redis(f'google_state:{state}')
-        if not saved_state or state != saved_state:
+        if not saved_state:
+            print("No saved state found")
+            raise HTTPException(status_code=400, detail='Invalid state parameter')
+            
+        # Convert saved_state to string if it's bytes
+        if isinstance(saved_state, bytes):
+            saved_state = saved_state.decode('utf-8')
+            
+        if state != saved_state:
             print(f"State mismatch. Received: {state}, Saved: {saved_state}")
             raise HTTPException(status_code=400, detail='Invalid state parameter')
     
@@ -112,15 +120,27 @@ async def google_auth_callback(request: Request):
             
             user_info = user_response.json()
 
+            # Create user session token that can be used across the application
+            session_token = token_data['access_token']
+            
             # Return HTML that will close the popup and send the token to the parent window
             close_window_script = f"""
             <html>
                 <script>
-                    window.opener.postMessage({{
-                        token: "{token_data['access_token']}",
-                        user: {json.dumps(user_info)}
-                    }}, "*");
-                    window.close();
+                    try {{
+                        // Store token in localStorage and cookie with security settings
+                        localStorage.setItem('authToken', "{session_token}");
+                        document.cookie = `authToken={session_token}; path=/; SameSite=Strict; Secure`;
+                        
+                        // Send message to opener window
+                        window.opener.postMessage({{
+                            token: "{session_token}",
+                            user: {json.dumps(user_info)}
+                        }}, "*");
+                        window.close();
+                    }} catch (e) {{
+                        console.error('Error in popup:', e);
+                    }}
                 </script>
             </html>
             """
