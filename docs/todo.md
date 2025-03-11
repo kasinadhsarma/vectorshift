@@ -2,14 +2,14 @@
 
 #### **1️⃣ Setup the Project**  
 - [x] **Install frontend dependencies**  
-  - Navigate to the `/frontend` directory and run:  
+  - Navigate to the `/app` directory and run:  
     ```bash
     npm install
     npm run start
     ```
   - This ensures that all required frontend libraries are installed and the application runs correctly.
 
-- [ ] **Install backend dependencies and run the server**  
+- [x] **Install backend dependencies and run the server**  
   - Navigate to the `/backend` directory and run:  
     ```bash
     uvicorn main:app --reload
