@@ -16,7 +16,7 @@
     ```
   - This starts the FastAPI backend server to handle API requests.
 
-- [ ] **Start Redis instance**  
+- [x] **Start Redis instance**  
   - Run the command:  
     ```bash
     redis-server
