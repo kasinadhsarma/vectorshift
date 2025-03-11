@@ -3,7 +3,8 @@ uvicorn==0.24.0
 python-multipart==0.0.6
 python-dotenv==1.0.0
 requests==2.31.0
-redis==5.0.1
+redis[hiredis]==5.0.1
+redis-py-asyncio==2.1.1
 # Use cassandra-driver with eventlet since asyncore was removed in Python 3.12
 cassandra-driver[eventlet]>=3.28.0
 bcrypt==4.0.1
@@ -13,6 +14,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 tenacity==8.2.2
 httpx==0.24.1
+python-distutils==3.12.0  # Required for Python 3.12
 kombu==5.3.5
 # Add eventlet for Python 3.12 compatibility with Cassandra
 eventlet>=0.33.3

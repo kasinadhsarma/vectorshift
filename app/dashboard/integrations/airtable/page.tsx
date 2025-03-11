@@ -1,11 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { AirtableIntegration } from "@/components/integrations/airtable-integration"
-import { DataVisualization } from "@/components/dashboard/data-visualization"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { Button } from "@/app/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
+import { AirtableIntegration } from "@/app/components/integrations/airtable-integration"
+import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { FileSpreadsheet, RefreshCw } from "lucide-react"
 
 export default function AirtableIntegrationPage() {

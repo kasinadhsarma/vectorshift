@@ -8,20 +8,41 @@ import { Badge } from "@/app/components/ui/badge"
 import { Progress } from "@/app/components/ui/progress"
 import { BarChart3, FileSpreadsheet, Lightbulb, MessageSquare, Plus, RefreshCw, Settings, Zap } from "lucide-react"
 import Link from "next/link"
+import { IntegrationsOverview } from "./integrations-overview"
+import { IntegrationForm } from "../integrations/integration-form"
+import { DataVisualization } from "./data-visualization"
 
-// Import these components from your project or create them
-import { IntegrationsOverview } from "@/app/components/dashboard/integrations-overview"
-import { IntegrationForm } from "@/app/components/integrations/integration-form"
-import { DataVisualization } from "@/app/components/dashboard/data-visualization"
+interface DashboardContentProps {
+  userId: string
+  userData: {
+    integrations: {
+      total: number
+      active: number
+      lastMonthTotal: number
+      lastMonthActive: number
+    }
+    dataSyncs: {
+      total: number
+      lastWeekTotal: number
+    }
+    usage: number
+    activeIntegrations: Array<{
+      name: string
+      status: string
+      lastSync: string
+      details: string
+    }>
+  }
+}
 
-export default function DashboardPage() {
+export function DashboardContent({ userId, userData }: DashboardContentProps) {
   const [activeIntegration, setActiveIntegration] = useState<string | null>(null)
   const [integrationData, setIntegrationData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const refreshData = async () => {
     setIsLoading(true)
-    // Simulate API call
+    // Implement actual refresh logic here
     await new Promise((resolve) => setTimeout(resolve, 1500))
     setIsLoading(false)
   }
@@ -52,8 +73,11 @@ export default function DashboardPage() {
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">4</div>
-            <p className="text-xs text-muted-foreground">+2 from last month</p>
+            <div className="text-2xl font-bold">{userData.integrations.total}</div>
+            <p className="text-xs text-muted-foreground">
+              {userData.integrations.total - userData.integrations.lastMonthTotal >= 0 ? "+" : ""}
+              {userData.integrations.total - userData.integrations.lastMonthTotal} from last month
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -62,8 +86,11 @@ export default function DashboardPage() {
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">+1 from last month</p>
+            <div className="text-2xl font-bold">{userData.integrations.active}</div>
+            <p className="text-xs text-muted-foreground">
+              {userData.integrations.active - userData.integrations.lastMonthActive >= 0 ? "+" : ""}
+              {userData.integrations.active - userData.integrations.lastMonthActive} from last month
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -72,8 +99,10 @@ export default function DashboardPage() {
             <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">28</div>
-            <p className="text-xs text-muted-foreground">+8 from last week</p>
+            <div className="text-2xl font-bold">{userData.dataSyncs.total}</div>
+            <p className="text-xs text-muted-foreground">
+              +{userData.dataSyncs.total - userData.dataSyncs.lastWeekTotal} from last week
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -82,8 +111,8 @@ export default function DashboardPage() {
             <Settings className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">65%</div>
-            <Progress value={65} className="mt-2" />
+            <div className="text-2xl font-bold">{userData.usage}%</div>
+            <Progress value={userData.usage} className="mt-2" />
           </CardContent>
         </Card>
       </div>
@@ -103,81 +132,33 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="grid gap-6">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <div className="flex flex-col items-center justify-between rounded-lg border p-4">
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Lightbulb className="h-5 w-5 text-primary" />
-                      <span className="font-medium">Notion</span>
+                {userData.activeIntegrations.map((integration) => (
+                  <div key={integration.name} className="flex flex-col items-center justify-between rounded-lg border p-4">
+                    <div className="flex w-full items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <IntegrationIcon name={integration.name} />
+                        <span className="font-medium">{integration.name}</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {integration.status}
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="text-xs">
-                      Connected
-                    </Badge>
-                  </div>
-                  <div className="mt-4 w-full">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Last sync: 2 hours ago</span>
-                      <span>3 workspaces</span>
+                    <div className="mt-4 w-full">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Last sync: {integration.lastSync}</span>
+                        <span>{integration.details}</span>
+                      </div>
+                      <Progress value={75} className="mt-2 h-1" />
                     </div>
-                    <Progress value={75} className="mt-2 h-1" />
-                  </div>
-                  <div className="mt-4 flex w-full justify-end">
-                    <Link href="/dashboard/integrations/notion">
-                      <Button variant="ghost" size="sm">
-                        Manage
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-                <div className="flex flex-col items-center justify-between rounded-lg border p-4">
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <FileSpreadsheet className="h-5 w-5 text-primary" />
-                      <span className="font-medium">Airtable</span>
+                    <div className="mt-4 flex w-full justify-end">
+                      <Link href={`/dashboard/${userId}/integrations/${integration.name.toLowerCase()}`}>
+                        <Button variant="ghost" size="sm">
+                          Manage
+                        </Button>
+                      </Link>
                     </div>
-                    <Badge variant="outline" className="text-xs">
-                      Connected
-                    </Badge>
                   </div>
-                  <div className="mt-4 w-full">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Last sync: 5 hours ago</span>
-                      <span>2 bases</span>
-                    </div>
-                    <Progress value={60} className="mt-2 h-1" />
-                  </div>
-                  <div className="mt-4 flex w-full justify-end">
-                    <Link href="/dashboard/integrations/airtable">
-                      <Button variant="ghost" size="sm">
-                        Manage
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-                <div className="flex flex-col items-center justify-between rounded-lg border p-4">
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <MessageSquare className="h-5 w-5 text-primary" />
-                      <span className="font-medium">Slack</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      Connected
-                    </Badge>
-                  </div>
-                  <div className="mt-4 w-full">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Last sync: 1 day ago</span>
-                      <span>5 channels</span>
-                    </div>
-                    <Progress value={40} className="mt-2 h-1" />
-                  </div>
-                  <div className="mt-4 flex w-full justify-end">
-                    <Link href="/dashboard/integrations/slack">
-                      <Button variant="ghost" size="sm">
-                        Manage
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
+                ))}
               </div>
             </CardContent>
             <CardFooter>
@@ -211,3 +192,15 @@ export default function DashboardPage() {
   )
 }
 
+function IntegrationIcon({ name }: { name: string }) {
+  switch (name.toLowerCase()) {
+    case "notion":
+      return <Lightbulb className="h-5 w-5 text-primary" />
+    case "airtable":
+      return <FileSpreadsheet className="h-5 w-5 text-primary" />
+    case "slack":
+      return <MessageSquare className="h-5 w-5 text-primary" />
+    default:
+      return <Settings className="h-5 w-5 text-primary" />
+  }
+}

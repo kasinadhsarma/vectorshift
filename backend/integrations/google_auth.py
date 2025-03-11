@@ -5,7 +5,7 @@ from fastapi import Request, HTTPException
 from fastapi.responses import HTMLResponse
 import httpx
 from dotenv import load_dotenv
-from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
+from redis_client import add_key_value_redis, get_value_redis, delete_key_redis, store_user_token
 
 load_dotenv()
 
@@ -120,18 +120,37 @@ async def google_auth_callback(request: Request):
             
             user_info = user_response.json()
 
-            # Create user session token that can be used across the application
+            # Create JWT session token
             session_token = token_data['access_token']
+            
+            try:
+                # Store user info and token in Redis
+                user_data = {
+                    "email": user_info.get("email"),
+                    "name": user_info.get("name"),
+                    "picture": user_info.get("picture"),
+                    "access_token": token_data.get("access_token"),
+                    "refresh_token": token_data.get("refresh_token")
+                }
+                
+                success = await store_user_token(session_token, user_data)
+                if not success:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to store user session"
+                    )
+            except Exception as e:
+                print(f"Error storing user token: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to complete authentication"
+                )
             
             # Return HTML that will close the popup and send the token to the parent window
             close_window_script = f"""
             <html>
                 <script>
                     try {{
-                        // Store token in localStorage and cookie with security settings
-                        localStorage.setItem('authToken', "{session_token}");
-                        document.cookie = `authToken={session_token}; path=/; SameSite=Strict; Secure`;
-                        
                         // Send message to opener window
                         window.opener.postMessage({{
                             token: "{session_token}",

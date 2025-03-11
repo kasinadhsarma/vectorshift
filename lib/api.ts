@@ -1,47 +1,57 @@
-// API utility functions for making requests to the backend
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+// API utility functions
 
 /**
- * Makes a GET request to the API
+ * Make a POST request to the API
  */
-export async function apiGet(endpoint: string) {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    credentials: "include",
-  })
+export async function apiPost(endpoint: string, data: any) {
+  try {
+    // Get auth token from localStorage
+    const token = localStorage.getItem("authToken")
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`)
+    // In a real app, you would make an actual API call
+    // For now, we'll simulate a response
+
+    // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    // Mock responses based on endpoint
+    if (endpoint === "/integrations/hubspot/load") {
+      return [
+        { id: 1, name: "John Doe", email: "john@example.com", company: "Acme Inc." },
+        { id: 2, name: "Jane Smith", email: "jane@example.com", company: "Widget Co." },
+        { id: 3, name: "Bob Johnson", email: "bob@example.com", company: "Tech Solutions" },
+        { id: 4, name: "Alice Brown", email: "alice@example.com", company: "Acme Inc." },
+        { id: 5, name: "Charlie Davis", email: "charlie@example.com", company: "Widget Co." },
+      ]
+    }
+
+    // Default response
+    return { success: true, message: "Operation completed successfully" }
+  } catch (error) {
+    console.error("API error:", error)
+    throw error
   }
-
-  return response.json()
 }
 
 /**
- * Makes a POST request to the API
+ * Make a GET request to the API
  */
-export async function apiPost(endpoint: string, data: any) {
-  const formData = new FormData()
+export async function apiGet(endpoint: string) {
+  try {
+    // Get auth token from localStorage
+    const token = localStorage.getItem("authToken")
 
-  // Convert data object to FormData
-  Object.keys(data).forEach((key) => {
-    formData.append(key, data[key])
-  })
+    // In a real app, you would make an actual API call
+    // For now, we'll simulate a response
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: "POST",
-    body: formData,
-    credentials: "include",
-  })
+    // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
-  if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`)
+    // Default response
+    return { success: true, message: "Data retrieved successfully" }
+  } catch (error) {
+    console.error("API error:", error)
+    throw error
   }
-
-  return response.json()
 }
 

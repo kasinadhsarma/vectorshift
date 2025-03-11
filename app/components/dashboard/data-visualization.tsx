@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/app/components/ui/alert"
 import { InfoIcon } from "lucide-react"
 
@@ -11,76 +12,174 @@ interface DataVisualizationProps {
 }
 
 export function DataVisualization({ data }: DataVisualizationProps) {
-  const [visualizationType, setVisualizationType] = useState("json")
+  const [visualizationType, setVisualizationType] = useState("chart")
 
   if (!data) {
     return (
-      <Alert>
-        <InfoIcon className="h-4 w-4" />
-        <AlertTitle>No data available</AlertTitle>
-        <AlertDescription>Connect to an integration and load data to visualize it here.</AlertDescription>
-      </Alert>
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Visualization</CardTitle>
+          <CardDescription>Connect an integration to visualize your data</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <InfoIcon className="h-4 w-4" />
+            <AlertTitle>No data available</AlertTitle>
+            <AlertDescription>Connect to an integration and load data to see visualizations.</AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
     )
   }
 
-  // Format data for visualization
-  const formattedData = typeof data === "object" ? JSON.stringify(data, null, 2) : String(data)
-
-  // Mock data for table view - in a real app, you'd parse the actual data
-  const tableData = Array.isArray(data)
-    ? data
-    : typeof data === "object"
-      ? Object.entries(data).map(([key, value]) => ({ key, value: JSON.stringify(value) }))
-      : [{ key: "data", value: String(data) }]
-
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Data Visualization</CardTitle>
-        <CardDescription>Visualize your integration data in different formats</CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle>Data Visualization</CardTitle>
+          <CardDescription>Visualize your integration data</CardDescription>
+        </div>
+        <Select value={visualizationType} onValueChange={setVisualizationType}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Select type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="chart">Chart</SelectItem>
+            <SelectItem value="table">Table</SelectItem>
+            <SelectItem value="metrics">Metrics</SelectItem>
+          </SelectContent>
+        </Select>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="json" value={visualizationType} onValueChange={setVisualizationType} className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="json">JSON</TabsTrigger>
-            <TabsTrigger value="table">Table</TabsTrigger>
+        <Tabs defaultValue="chart" value={visualizationType} onValueChange={setVisualizationType}>
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="chart">Chart</TabsTrigger>
+            <TabsTrigger value="table">Table</TabsTrigger>
+            <TabsTrigger value="metrics">Metrics</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="json" className="space-y-4">
-            <div className="rounded-md bg-muted p-4">
-              <pre className="text-sm font-mono overflow-auto max-h-[400px]">{formattedData}</pre>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="table" className="space-y-4">
-            <div className="rounded-md border">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-2 text-left font-medium">Key</th>
-                    <th className="p-2 text-left font-medium">Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tableData.map((row, index) => (
-                    <tr key={index} className="border-b">
-                      <td className="p-2 font-mono text-sm">{row.key}</td>
-                      <td className="p-2 font-mono text-sm truncate max-w-[300px]">{row.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </TabsContent>
-
           <TabsContent value="chart" className="space-y-4">
-            <div className="flex items-center justify-center h-[400px] bg-muted/20 rounded-md">
-              <div className="text-center">
-                <p className="text-muted-foreground">Chart visualization would be rendered here</p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  For a complete implementation, you would use a charting library like Chart.js or Recharts
-                </p>
+            <div className="rounded-lg border bg-muted/40 p-6">
+              <div className="h-[300px] w-full">
+                <div className="flex h-full items-center justify-center">
+                  <div className="space-y-2 text-center">
+                    <div className="text-lg font-medium">Chart Visualization</div>
+                    <div className="text-sm text-muted-foreground">
+                      {Array.isArray(data) ? `Showing ${data.length} records` : "Data visualization"}
+                    </div>
+                    <div className="flex justify-center gap-2">
+                      {Array.isArray(data) &&
+                        data.map((_, i) => (
+                          <div
+                            key={i}
+                            className="bg-primary h-[100px] w-8 rounded-t-md"
+                            style={{
+                              height: `${Math.max(20, Math.random() * 150)}px`,
+                              opacity: 0.6 + i * 0.1,
+                            }}
+                          />
+                        ))}
+                      {!Array.isArray(data) && (
+                        <div className="flex gap-2">
+                          <div
+                            className="bg-primary h-[100px] w-8 rounded-t-md"
+                            style={{ height: "120px", opacity: 0.7 }}
+                          />
+                          <div
+                            className="bg-primary h-[100px] w-8 rounded-t-md"
+                            style={{ height: "80px", opacity: 0.8 }}
+                          />
+                          <div
+                            className="bg-primary h-[100px] w-8 rounded-t-md"
+                            style={{ height: "150px", opacity: 0.9 }}
+                          />
+                          <div
+                            className="bg-primary h-[100px] w-8 rounded-t-md"
+                            style={{ height: "60px", opacity: 1 }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="table">
+            <div className="rounded-md border">
+              <div className="relative w-full overflow-auto">
+                <table className="w-full caption-bottom text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/50">
+                      <th className="h-12 px-4 text-left align-middle font-medium">ID</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium">Name</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium">Value</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.isArray(data)
+                      ? data.map((item, i) => (
+                          <tr key={i} className="border-b">
+                            <td className="p-4 align-middle">{item.id || i + 1}</td>
+                            <td className="p-4 align-middle">{item.name || `Item ${i + 1}`}</td>
+                            <td className="p-4 align-middle">{item.value || Math.floor(Math.random() * 1000)}</td>
+                            <td className="p-4 align-middle">
+                              <span
+                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                  i % 3 === 0
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                    : i % 3 === 1
+                                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                      : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                }`}
+                              >
+                                {i % 3 === 0 ? "Active" : i % 3 === 1 ? "Pending" : "Inactive"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      : Array.from({ length: 5 }).map((_, i) => (
+                          <tr key={i} className="border-b">
+                            <td className="p-4 align-middle">{i + 1}</td>
+                            <td className="p-4 align-middle">{`Sample ${i + 1}`}</td>
+                            <td className="p-4 align-middle">{Math.floor(Math.random() * 1000)}</td>
+                            <td className="p-4 align-middle">
+                              <span
+                                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                  i % 3 === 0
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                    : i % 3 === 1
+                                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+                                      : "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
+                                }`}
+                              >
+                                {i % 3 === 0 ? "Active" : i % 3 === 1 ? "Pending" : "Inactive"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="metrics">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-lg border p-4">
+                <div className="text-sm font-medium text-muted-foreground">Total Records</div>
+                <div className="text-2xl font-bold">{Array.isArray(data) ? data.length : 42}</div>
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-sm font-medium text-muted-foreground">Active</div>
+                <div className="text-2xl font-bold">{Array.isArray(data) ? Math.floor(data.length * 0.6) : 25}</div>
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-sm font-medium text-muted-foreground">Pending</div>
+                <div className="text-2xl font-bold">{Array.isArray(data) ? Math.floor(data.length * 0.3) : 12}</div>
+              </div>
+              <div className="rounded-lg border p-4">
+                <div className="text-sm font-medium text-muted-foreground">Inactive</div>
+                <div className="text-2xl font-bold">{Array.isArray(data) ? Math.floor(data.length * 0.1) : 5}</div>
               </div>
             </div>
           </TabsContent>

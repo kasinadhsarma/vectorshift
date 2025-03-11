@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 import json
 
 from auth_routes import router as auth_router
+from routes.dashboard import router as dashboard_router
 from integrations.airtable import authorize_airtable, get_items_airtable, oauth2callback_airtable, get_airtable_credentials
 from integrations.notion import authorize_notion, get_items_notion, oauth2callback_notion, get_notion_credentials
 from integrations.hubspot import authorize_hubspot, get_hubspot_credentials, get_items_hubspot, oauth2callback_hubspot
@@ -17,22 +18,28 @@ origins = [
     "http://localhost:8000",  # Backend
     "https://accounts.google.com",  # Google OAuth
     "null",  # Allow requests from popup windows
-    "http://localhost:8000/auth/google/callback",  # OAuth callback
-    "http://localhost:3000/auth/google/callback",  # OAuth callback
 ]
 
-# Enable credentials
+# Enable CORS with specific configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With"
+    ],
     expose_headers=["*"],
+    max_age=3600,
 )
 
-# Include auth routes
+# Include routers
 app.include_router(auth_router, prefix="/auth", tags=["authentication"])
+app.include_router(dashboard_router, tags=["dashboard"])
 
 @app.get('/')
 def read_root():

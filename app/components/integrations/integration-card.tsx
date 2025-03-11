@@ -1,15 +1,15 @@
 "use client"
 
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
+import type React from "react"
+
+import { Card, CardContent, CardFooter } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
-import { Badge } from "@/app/components/ui/badge"
 import { cn } from "@/lib/utils"
-import type { ReactNode } from "react"
 
 interface IntegrationCardProps {
   title: string
   description: string
-  icon: ReactNode
+  icon: React.ReactNode
   isConnected: boolean
   isActive: boolean
   onConnect: () => void
@@ -26,23 +26,26 @@ export function IntegrationCard({
   onSelect,
 }: IntegrationCardProps) {
   return (
-    <Card className={cn("transition-all duration-200", isActive ? "ring-2 ring-primary" : "", "hover:shadow-md")}>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-lg font-medium">{title}</CardTitle>
-        <Badge variant={isConnected ? "default" : "outline"}>{isConnected ? "Connected" : "Disconnected"}</Badge>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center space-x-4">
-          <div className="rounded-full bg-muted p-2">{icon}</div>
+    <Card
+      className={cn("transition-all duration-200 hover:shadow-md", isActive && "ring-2 ring-primary")}
+      onClick={onSelect}
+    >
+      <CardContent className="pt-6">
+        <div className="flex flex-col items-center text-center space-y-2">
+          <div className="p-2 rounded-full bg-primary/10">{icon}</div>
+          <h3 className="font-semibold text-xl">{title}</h3>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
       </CardContent>
-      <CardFooter className="flex justify-between">
-        <Button variant={isConnected ? "destructive" : "default"} onClick={onConnect}>
+      <CardFooter className="flex justify-center pb-6">
+        <Button
+          variant={isConnected ? "outline" : "default"}
+          onClick={(e) => {
+            e.stopPropagation()
+            onConnect()
+          }}
+        >
           {isConnected ? "Disconnect" : "Connect"}
-        </Button>
-        <Button variant="outline" onClick={onSelect}>
-          View Details
         </Button>
       </CardFooter>
     </Card>

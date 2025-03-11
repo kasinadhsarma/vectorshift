@@ -2,9 +2,10 @@ import type React from "react"
 import "@/app/globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/toaster"
-import { GoogleAuthProvider } from "@/components/auth/google-auth-provider"
+import { ThemeProvider } from "@/app/components/theme-provider"
+import { Toaster } from "@/app/components/ui/toaster"
+import { GoogleAuthProvider } from "@/app/components/auth/google-auth-provider"
+import { Analytics } from "@/app/components/analytics"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -26,6 +27,7 @@ export default function RootLayout({
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
             {children}
             <Toaster />
+            <Analytics />
           </ThemeProvider>
         </GoogleAuthProvider>
       </body>

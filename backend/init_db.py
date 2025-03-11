@@ -1,0 +1,95 @@
+from cassandra.cluster import Cluster
+from cassandra.auth import PlainTextAuthProvider
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def create_keyspace_and_tables():
+    # Get Cassandra configuration from environment variables
+    host = os.getenv('CASSANDRA_HOST', 'localhost')
+    port = int(os.getenv('CASSANDRA_PORT', '9042'))
+    keyspace = os.getenv('CASSANDRA_KEYSPACE', 'vectorshift')
+    user = os.getenv('CASSANDRA_USER')
+    password = os.getenv('CASSANDRA_PASSWORD')
+
+    try:
+        # Connect to Cassandra
+        auth_provider = None
+        if user and password:
+            auth_provider = PlainTextAuthProvider(username=user, password=password)
+
+        cluster = Cluster([host], port=port, auth_provider=auth_provider)
+        session = cluster.connect()
+
+        # Create keyspace
+        print(f"Creating keyspace {keyspace} if it doesn't exist...")
+        session.execute(f"""
+            CREATE KEYSPACE IF NOT EXISTS {keyspace}
+            WITH REPLICATION = {{
+                'class': 'SimpleStrategy',
+                'replication_factor': 1
+            }}
+        """)
+
+        # Switch to the keyspace
+        session.set_keyspace(keyspace)
+
+        # Create users table
+        print("Creating users table...")
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                email text PRIMARY KEY,
+                password_hash text,
+                created_at timestamp
+            )
+        """)
+
+        # Create password_reset_tokens table
+        print("Creating password_reset_tokens table...")
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                email text,
+                token text,
+                created_at timestamp,
+                PRIMARY KEY (email, token)
+            )
+        """)
+
+        # Create user_credentials table
+        print("Creating user_credentials table...")
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS user_credentials (
+                user_id text,
+                provider text,
+                credentials map<text, text>,
+                created_at timestamp,
+                PRIMARY KEY (user_id, provider)
+            )
+        """)
+
+        # Create user_integrations table
+        print("Creating user_integrations table...")
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS user_integrations (
+                user_id text,
+                name text,
+                status text,
+                last_sync timestamp,
+                workspace_count int,
+                settings map<text, text>,
+                PRIMARY KEY (user_id, name)
+            )
+        """)
+
+        print("Database initialization completed successfully!")
+
+    except Exception as e:
+        print(f"Error initializing database: {str(e)}")
+        raise
+    finally:
+        if 'cluster' in locals():
+            cluster.shutdown()
+
+if __name__ == "__main__":
+    create_keyspace_and_tables()
