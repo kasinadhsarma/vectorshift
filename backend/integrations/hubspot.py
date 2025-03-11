@@ -15,7 +15,7 @@ load_dotenv()
 
 CLIENT_ID = os.getenv('HUBSPOT_CLIENT_ID')
 CLIENT_SECRET = os.getenv('HUBSPOT_CLIENT_SECRET')
-REDIRECT_URI = 'http://localhost:8000/integrations/hubspot/oauth2callback'
+REDIRECT_URI = os.getenv('HUBSPOT_REDIRECT_URI')
 AUTHORIZATION_URL = f'https://app.hubspot.com/oauth/authorize'
 
 async def authorize_hubspot(user_id, org_id):
