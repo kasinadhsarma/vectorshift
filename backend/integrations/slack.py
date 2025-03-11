@@ -98,3 +98,4 @@ async def get_items_slack(credentials) -> list[IntegrationItem]:
             )
             for channel in channels
         ]
+

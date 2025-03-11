@@ -15,3 +15,4 @@ async def get_value_redis(key):
 
 async def delete_key_redis(key):
     await redis_client.delete(key)
+

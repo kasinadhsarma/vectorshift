@@ -115,3 +115,4 @@ async def get_items_notion(credentials) -> list[IntegrationItem]:
         items.append(item)
 
     return items
+

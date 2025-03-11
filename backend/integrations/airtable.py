@@ -159,3 +159,4 @@ async def get_items_airtable(credentials) -> list[IntegrationItem]:
             items.append(table_item)
 
     return items
+
