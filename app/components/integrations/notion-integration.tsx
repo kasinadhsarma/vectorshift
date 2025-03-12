@@ -1,271 +1,114 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/app/components/ui/button"
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
-import {
-  authorizeIntegration,
-  getIntegrationStatus,
-  disconnectIntegration,
-  getNotionPages,
-  syncIntegrationData,
-  IntegrationStatus, // Import IntegrationStatus
-} from "@/app/lib/api-client"
+import axios, { AxiosError, AxiosResponse } from "axios"
+import { Button } from "../ui/button"
+import { Loader2 } from "lucide-react"
+
+interface IntegrationParams {
+    credentials?: Record<string, any>
+    type?: string
+}
+
+interface AuthResponse {
+    url: string
+}
+
+interface CredentialsResponse {
+    access_token: string
+    workspace_id: string
+    [key: string]: any
+}
+
+interface ErrorResponse {
+    detail: string
+}
 
 interface NotionIntegrationProps {
-  userId: string
-  orgId: string
+    user: string
+    org: string
+    integrationParams?: IntegrationParams
+    setIntegrationParams: (params: IntegrationParams) => void
 }
 
-interface NotionWorkspace {
-  id: string
-  name: string
-  pages: Array<{
-    id: string
-    title: string
-    lastEdited: string
-  }>
-}
+export const NotionIntegration = ({ 
+    user, 
+    org, 
+    integrationParams, 
+    setIntegrationParams 
+}: NotionIntegrationProps) => {
+    const [isConnected, setIsConnected] = useState(false)
+    const [isConnecting, setIsConnecting] = useState(false)
 
-export function NotionIntegration({ userId, orgId }: NotionIntegrationProps) {
-  const [isConnected, setIsConnected] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [workspace, setWorkspace] = useState<NotionWorkspace | null>(null)
-  const { toast } = useToast()
+    // Function to open OAuth in a new window
+    const handleConnectClick = async () => {
+        try {
+            setIsConnecting(true)
 
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const status: IntegrationStatus = await getIntegrationStatus('notion', userId) //Type it properly
-        setIsConnected(status.isConnected)
+            const response: AxiosResponse<AuthResponse> = await axios.post(
+                `http://localhost:8000/integrations/notion/authorize`, 
+                { user_id: user, org_id: org }  // Send JSON instead of FormData
+            )
+            
+            const authURL = response.data.url
+            const newWindow = window.open(authURL, 'Notion Authorization', 'width=600, height=600')
 
-        if (status.isConnected && status.credentials?.workspaceId) {
-          const pages = await getNotionPages(status.credentials.workspaceId)
-          setWorkspace({
-            id: status.credentials.workspaceId || '',
-            name: 'Notion Workspace',
-            pages: pages.map(page => ({
-              id: page.id,
-              title: page.title,
-              lastEdited: page.last_edited_time
-            }))
-          })
+            // Polling for the window to close
+            const pollTimer = window.setInterval(() => {
+                if (newWindow?.closed !== false) { 
+                    window.clearInterval(pollTimer)
+                    handleWindowClosed()
+                }
+            }, 200)
+        } catch (e) {
+            setIsConnecting(false)
+            const error = e as AxiosError<ErrorResponse>
+            alert(error.response?.data?.detail || 'Failed to connect to Notion')
         }
+    }
 
-        if (status.error) {
-          setError(status.error)
+    // Function to handle logic when the OAuth window closes
+    const handleWindowClosed = async () => {
+        try {
+            const response: AxiosResponse<CredentialsResponse> = await axios.post(
+                `http://localhost:8000/integrations/notion/credentials`, 
+                { user_id: user, org_id: org }  // Send JSON instead of FormData
+            )
+            const credentials = response.data
+
+            if (credentials) {
+                setIsConnected(true)
+                setIntegrationParams({ 
+                    ...integrationParams, 
+                    credentials: credentials, 
+                    type: 'Notion' 
+                })
+            }
+            setIsConnecting(false)
+        } catch (e) {
+            setIsConnecting(false)
+            const error = e as AxiosError<ErrorResponse>
+            alert(error.response?.data?.detail || 'Failed to get Notion credentials')
         }
-      } catch (error) {
-        console.error('Error checking Notion status:', error)
-        setError('Failed to check integration status')
-      } finally {
-        setIsLoading(false)
-      }
     }
 
-    checkStatus()
-  }, [userId])
+    useEffect(() => {
+        setIsConnected(!!integrationParams?.credentials)
+    }, [integrationParams])
 
-  const handleConnect = async () => {
-    try {
-      setIsConnecting(true)
-      setError(null)
-
-      // Get authorization URL from backend
-      const authUrl = await authorizeIntegration('notion', userId, orgId)
-
-      // Open Notion OAuth page in a new window
-      const width = 600
-      const height = 700
-      const left = window.screenX + (window.outerWidth - width) / 2
-      const top = window.screenY + (window.outerHeight - height) / 2
-
-      const authWindow = window.open(
-        authUrl,
-        'Notion Authorization',
-        `width=${width},height=${height},left=${left},top=${top}`
-      )
-
-      // Listen for the OAuth callback
-      window.addEventListener('message', async (event) => {
-        if (event.data.type === 'notion-oauth-callback') {
-          if (event.data.success) {
-            setIsConnected(true)
-            toast({
-              title: "Connected successfully",
-              description: "Successfully connected to Notion",
-            })
-
-            // Load initial workspace data
-            const pages = await getNotionPages(event.data.workspaceId)
-            setWorkspace({
-              id: event.data.workspaceId,
-              name: 'Notion Workspace',
-              pages: pages.map(page => ({
-                id: page.id,
-                title: page.title,
-                lastEdited: page.last_edited_time
-              }))
-            })
-          } else {
-            setError('Failed to connect to Notion')
-            toast({
-              title: "Connection failed",
-              description: event.data.error || "Failed to connect to Notion",
-              variant: "destructive",
-            })
-          }
-          authWindow?.close()
-        }
-      })
-    } catch (error) {
-      console.error('Error connecting to Notion:', error)
-      setError('Failed to initiate Notion connection')
-      toast({
-        title: "Connection failed",
-        description: "Failed to connect to Notion",
-        variant: "destructive",
-      })
-    } finally {
-      setIsConnecting(false)
-    }
-  }
-
-  const handleDisconnect = async () => {
-    try {
-      await disconnectIntegration('notion', userId)
-      setIsConnected(false)
-      setWorkspace(null)
-      toast({
-        title: "Disconnected",
-        description: "Successfully disconnected from Notion",
-      })
-    } catch (error) {
-      console.error('Error disconnecting from Notion:', error)
-      toast({
-        title: "Error",
-        description: "Failed to disconnect from Notion",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleSync = async () => {
-    try {
-      setIsSyncing(true)
-      await syncIntegrationData('notion', userId)
-
-      // Refresh pages data
-      if (workspace) {
-        const pages = await getNotionPages(workspace.id)
-        setWorkspace({
-          ...workspace,
-          pages: pages.map(page => ({
-            id: page.id,
-            title: page.title,
-            lastEdited: page.last_edited_time
-          }))
-        })
-      }
-
-      toast({
-        title: "Sync complete",
-        description: "Successfully synced Notion data",
-      })
-    } catch (error) {
-      console.error('Error syncing Notion data:', error)
-      toast({
-        title: "Sync failed",
-        description: "Failed to sync Notion data",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSyncing(false)
-    }
-  }
-
-  if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-6">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
+        <div className="mt-4">
+            <h3 className="mb-4">Parameters</h3>
+            <div className="flex items-center justify-center">
+                <Button
+                    variant={isConnected ? "outline" : "default"}
+                    onClick={isConnected ? () => {} : handleConnectClick}
+                    disabled={isConnecting}
+                    className={isConnected ? "cursor-default opacity-100" : ""}
+                >
+                    {isConnected ? 'Notion Connected' : isConnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Connect to Notion'}
+                </Button>
+            </div>
+        </div>
     )
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Notion Integration</h3>
-        <p className="text-sm text-muted-foreground">
-          Connect to your Notion workspace to access and sync your pages and databases.
-        </p>
-      </div>
-
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
-
-      <div className="flex gap-4">
-        <Button
-          onClick={isConnected ? handleDisconnect : handleConnect}
-          disabled={isConnecting || isSyncing}
-          variant={isConnected ? "outline" : "default"}
-        >
-          {isConnected ? (
-            <>
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Disconnect Notion
-            </>
-          ) : isConnecting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Connecting...
-            </>
-          ) : (
-            "Connect to Notion"
-          )}
-        </Button>
-
-        {isConnected && (
-          <Button
-            onClick={handleSync}
-            disabled={isSyncing}
-            variant="outline"
-          >
-            {isSyncing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Syncing...
-              </>
-            ) : (
-              "Sync Data"
-            )}
-          </Button>
-        )}
-      </div>
-
-      {workspace && workspace.pages.length > 0 && (
-        <div className="border rounded-lg p-4">
-          <h4 className="font-medium mb-2">Connected Pages</h4>
-          <div className="space-y-2">
-            {workspace.pages.map(page => (
-              <div key={page.id} className="flex justify-between text-sm p-2 bg-muted/50 rounded">
-                <span>{page.title}</span>
-                <span className="text-muted-foreground">
-                  Last edited: {new Date(page.lastEdited).toLocaleDateString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
 }

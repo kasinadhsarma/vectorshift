@@ -13,7 +13,7 @@ RUN npm install
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npm run build --legacy-peer-deps
 
 # Production stage
 FROM node:18-alpine AS runner
