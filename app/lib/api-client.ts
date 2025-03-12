@@ -108,66 +108,37 @@ interface IntegrationCredentials {
 }
 
 // Integration API Methods
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8000/api';
+
 export async function authorizeIntegration(provider: string, userId: string, orgId: string): Promise<string> {
-  const response = await fetch(`/api/integrations/${provider}/authorize`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId, orgId }),
+  const response = await axios.post(`${API_BASE_URL}/integrations/${provider}/authorize`, {
+    userId,
+    orgId
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to authorize ${provider}`);
-  }
-
-  const data = await response.json();
-  return data.url;
+  return response.data.url;
 }
 
-export async function getIntegrationStatus(provider: string, userId: string): Promise<IntegrationStatus> {
-  const response = await fetch(`/api/integrations/${provider}/status?user_id=${userId}`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    },
+export async function getIntegrationStatus(provider: string, userId: string, orgId?: string): Promise<IntegrationStatus> {
+  const response = await axios.get(`${API_BASE_URL}/integrations/${provider}/status`, {
+    params: { user_id: userId, org_id: orgId }
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to get ${provider} status`);
-  }
-
-  return response.json();
+  return response.data;
 }
 
-export async function disconnectIntegration(provider: string, userId: string): Promise<void> {
-  const response = await fetch(`/api/integrations/${provider}/disconnect`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId }),
+export async function disconnectIntegration(provider: string, userId: string, orgId?: string): Promise<void> {
+  await axios.post(`${API_BASE_URL}/integrations/${provider}/disconnect`, {
+    user_id: userId,
+    org_id: orgId
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to disconnect ${provider}`);
-  }
 }
 
-export async function syncIntegrationData(provider: string, userId: string): Promise<void> {
-  const response = await fetch(`/api/integrations/${provider}/sync`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId }),
+export async function syncIntegrationData(provider: string, userId: string, orgId?: string): Promise<void> {
+  await axios.post(`${API_BASE_URL}/integrations/${provider}/sync`, {
+    user_id: userId,
+    org_id: orgId
   });
-
-  if (!response.ok) {
-    throw new Error(`Failed to sync ${provider} data`);
-  }
 }
 
 // Integration-specific methods

@@ -67,12 +67,20 @@ async def authorize_integration(provider: str, request: Request):
     """Generate OAuth authorization URL for the provider."""
     try:
         provider_funcs = get_provider_functions(provider)
-        body = await request.json()
-        user_id = body.get('userId')
-        org_id = body.get('orgId')
+        
+        # Handle both JSON and form data
+        content_type = request.headers.get('content-type', '')
+        if 'application/json' in content_type:
+            body = await request.json()
+            user_id = body.get('userId')
+            org_id = body.get('orgId')
+        else:
+            form = await request.form()
+            user_id = form.get('user_id')
+            org_id = form.get('org_id')
 
         if not user_id or not org_id:
-            raise HTTPException(status_code=400, detail="Missing userId or orgId")
+            raise HTTPException(status_code=400, detail="Missing user_id/org_id")
 
         auth_url = await provider_funcs["authorize"](user_id, org_id)
         return {"url": auth_url}
@@ -85,12 +93,20 @@ async def get_integration_credentials(provider: str, request: Request):
     """Retrieve stored OAuth credentials for a provider."""
     try:
         provider_funcs = get_provider_functions(provider)
-        body = await request.json()
-        user_id = body.get('user_id')
-        org_id = body.get('org_id')
+        
+        # Handle both JSON and form data
+        content_type = request.headers.get('content-type', '')
+        if 'application/json' in content_type:
+            body = await request.json()
+            user_id = body.get('user_id')
+            org_id = body.get('org_id')
+        else:
+            form = await request.form()
+            user_id = form.get('user_id')
+            org_id = form.get('org_id')
 
         if not user_id or not org_id:
-            raise HTTPException(status_code=400, detail="Missing user_id or org_id")
+            raise HTTPException(status_code=400, detail="Missing user_id/org_id")
 
         credentials = await provider_funcs["get_credentials"](user_id, org_id)
         return credentials

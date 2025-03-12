@@ -42,37 +42,70 @@ export const NotionIntegration = ({
 
     // Function to open OAuth in a new window
     const handleConnectClick = async () => {
+        if (!user || !org) {
+            alert('Missing user or organization ID');
+            return;
+        }
+        
         try {
-            setIsConnecting(true)
+            setIsConnecting(true);
+            const response = await axios.post<AuthResponse>(
+                `http://localhost:8000/api/integrations/notion/authorize`,
+                { userId: user, orgId: org },
+                { headers: { 'Content-Type': 'application/json' } }
+            );
 
-            const response: AxiosResponse<AuthResponse> = await axios.post(
-                `http://localhost:8000/integrations/notion/authorize`, 
-                { user_id: user, org_id: org }  // Send JSON instead of FormData
-            )
-            
-            const authURL = response.data.url
-            const newWindow = window.open(authURL, 'Notion Authorization', 'width=600, height=600')
+            if (!response.data?.url) {
+                throw new Error('Invalid authorization URL');
+            }
 
-            // Polling for the window to close
-            const pollTimer = window.setInterval(() => {
-                if (newWindow?.closed !== false) { 
-                    window.clearInterval(pollTimer)
-                    handleWindowClosed()
+            const newWindow = window.open(
+                response.data.url,
+                'Notion Authorization',
+                'width=600,height=600,menubar=no,toolbar=no'
+            );
+
+            if (!newWindow) {
+                throw new Error('Popup was blocked. Please allow popups and try again.');
+            }
+
+            // Listen for messages from popup
+            const messageHandler = (event: MessageEvent) => {
+                if (event.data.error) {
+                    alert(`Authorization failed: ${event.data.error}`);
+                    setIsConnecting(false);
                 }
-            }, 200)
+            };
+            window.addEventListener('message', messageHandler);
+
+            // Poll for window close
+            const pollTimer = window.setInterval(() => {
+                if (newWindow.closed) {
+                    window.clearInterval(pollTimer);
+                    window.removeEventListener('message', messageHandler);
+                    handleWindowClosed();
+                }
+            }, 200);
+
         } catch (e) {
-            setIsConnecting(false)
-            const error = e as AxiosError<ErrorResponse>
-            alert(error.response?.data?.detail || 'Failed to connect to Notion')
+            setIsConnecting(false);
+            const error = e as AxiosError<ErrorResponse>;
+            alert(error.response?.data?.detail || 'Failed to connect to Notion');
         }
     }
 
     // Function to handle logic when the OAuth window closes
     const handleWindowClosed = async () => {
         try {
+            const data = { user_id: user, org_id: org }
             const response: AxiosResponse<CredentialsResponse> = await axios.post(
-                `http://localhost:8000/integrations/notion/credentials`, 
-                { user_id: user, org_id: org }  // Send JSON instead of FormData
+                `http://localhost:8000/api/integrations/notion/credentials`, 
+                data,
+                {
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                }
             )
             const credentials = response.data
 
