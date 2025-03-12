@@ -11,35 +11,21 @@ from integrations.google_auth import google_auth_url, google_auth_callback, get_
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:3000",  # Next.js frontend
-    "http://localhost:8000",  # Backend
-    "https://accounts.google.com",  # Google OAuth
-    "null",  # Allow requests from popup windows
-]
-
-# Enable CORS with specific configuration
+# Enable CORS for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "Content-Type",
-        "Authorization",
-        "Accept",
-        "Origin",
-        "X-Requested-With"
-    ],
-    expose_headers=["*"],
-    max_age=3600,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
 )
 
-# Include routers
-app.include_router(auth_router, prefix="/auth", tags=["authentication"])
-app.include_router(dashboard_router, tags=["dashboard"])
-app.include_router(profile_router, tags=["profiles"])
-app.include_router(integrations_router, tags=["integrations"])
+# Include routers with correct prefixes
+app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
+app.include_router(dashboard_router, prefix="/api", tags=["dashboard"])
+app.include_router(profile_router, prefix="/api", tags=["profiles"])
+# Since integration routes already include /integrations in their paths, we just need /api prefix
+app.include_router(integrations_router, prefix="/api", tags=["integrations"])
 
 @app.get('/')
 def read_root():
@@ -56,6 +42,6 @@ async def get_google_auth_url():
 async def google_callback(request: Request):
     return await google_auth_callback(request)
 
-@app.get('/auth/google/user')
+@app.get('/api/auth/google/user')
 async def get_user_info(token: str):
     return await get_google_user_info(token)

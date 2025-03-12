@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
@@ -9,34 +10,33 @@ import { DataVisualization } from "@/app/components/dashboard/data-visualization
 import { Lightbulb, RefreshCw } from "lucide-react"
 
 export default function NotionIntegrationPage() {
-  const [integrationParams, setIntegrationParams] = useState<any>({})
   const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
 
-  // Mock user and org data
-  const user = "user123"
-  const org = "org456"
+  // TODO: Replace with actual user and org data from auth context
+  const userId = "user123"
+  const orgId = "org456"
 
   const fetchData = async () => {
     setIsLoading(true)
+    setError(null)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Mock data
-      const mockData = {
-        pages: [
-          { id: "page1", title: "Project Overview", lastEdited: "2023-05-15" },
-          { id: "page2", title: "Meeting Notes", lastEdited: "2023-05-20" },
-          { id: "page3", title: "Product Roadmap", lastEdited: "2023-05-18" },
-        ],
-        databases: [
-          { id: "db1", name: "Tasks", items: 24 },
-          { id: "db2", name: "Projects", items: 8 },
-        ],
+      const status = await getIntegrationStatus("notion", userId)
+      setIsConnected(status.isConnected)
+      
+      if (!status.isConnected) {
+        throw new Error("Notion is not connected")
       }
 
-      setData(mockData)
+      if (status.status === "active") {
+        setData(status)
+      } else {
+        await syncIntegrationData("notion", userId)
+        const updatedStatus = await getIntegrationStatus("notion", userId)
+        setData(updatedStatus)
+      }
     } catch (error) {
       console.error("Error fetching data:", error)
     } finally {
@@ -56,7 +56,7 @@ export default function NotionIntegrationPage() {
             variant="outline"
             size="icon"
             onClick={fetchData}
-            disabled={isLoading || !integrationParams?.credentials}
+            disabled={isLoading || !isConnected}
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             <span className="sr-only">Refresh data</span>
@@ -77,10 +77,8 @@ export default function NotionIntegrationPage() {
           </CardHeader>
           <CardContent>
             <NotionIntegration
-              user={user}
-              org={org}
-              integrationParams={integrationParams}
-              setIntegrationParams={setIntegrationParams}
+              userId={userId}
+              orgId={orgId}
             />
           </CardContent>
         </Card>
@@ -91,7 +89,7 @@ export default function NotionIntegrationPage() {
             <CardDescription>View and manage your Notion data</CardDescription>
           </CardHeader>
           <CardContent>
-            {integrationParams?.credentials ? (
+            {isConnected ? (
               <div className="space-y-4">
                 <Button onClick={fetchData} disabled={isLoading}>
                   {isLoading ? (
@@ -144,7 +142,7 @@ export default function NotionIntegrationPage() {
                       {data.pages.map((page: any) => (
                         <tr key={page.id} className="border-b">
                           <td className="p-2">{page.title}</td>
-                          <td className="p-2">{page.lastEdited}</td>
+                          <td className="p-2">{new Date(page.lastEdited).toLocaleDateString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -187,4 +185,3 @@ export default function NotionIntegrationPage() {
     </div>
   )
 }
-

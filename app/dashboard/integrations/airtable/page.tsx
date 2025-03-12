@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
@@ -9,36 +10,33 @@ import { DataVisualization } from "@/app/components/dashboard/data-visualization
 import { FileSpreadsheet, RefreshCw } from "lucide-react"
 
 export default function AirtableIntegrationPage() {
-  const [integrationParams, setIntegrationParams] = useState<any>({})
   const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
 
-  // Mock user and org data
-  const user = "user123"
-  const org = "org456"
+  // TODO: Replace with actual user and org data from auth context
+  const userId = "user123"
+  const orgId = "org456"
 
   const fetchData = async () => {
     setIsLoading(true)
+    setError(null)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Mock data
-      const mockData = {
-        bases: [
-          { id: "base1", name: "Project Tracker", tables: 3 },
-          { id: "base2", name: "Marketing Calendar", tables: 2 },
-        ],
-        tables: [
-          { id: "table1", name: "Tasks", records: 45, baseId: "base1" },
-          { id: "table2", name: "Team Members", records: 12, baseId: "base1" },
-          { id: "table3", name: "Projects", records: 8, baseId: "base1" },
-          { id: "table4", name: "Campaigns", records: 15, baseId: "base2" },
-          { id: "table5", name: "Content Calendar", records: 30, baseId: "base2" },
-        ],
+      const status = await getIntegrationStatus("airtable", userId)
+      setIsConnected(status.isConnected)
+      
+      if (!status.isConnected) {
+        throw new Error("Airtable is not connected")
       }
 
-      setData(mockData)
+      if (status.status === "active") {
+        setData(status)
+      } else {
+        await syncIntegrationData("airtable", userId)
+        const updatedStatus = await getIntegrationStatus("airtable", userId)
+        setData(updatedStatus)
+      }
     } catch (error) {
       console.error("Error fetching data:", error)
     } finally {
@@ -58,7 +56,7 @@ export default function AirtableIntegrationPage() {
             variant="outline"
             size="icon"
             onClick={fetchData}
-            disabled={isLoading || !integrationParams?.credentials}
+            disabled={isLoading || !isConnected}
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             <span className="sr-only">Refresh data</span>
@@ -79,10 +77,8 @@ export default function AirtableIntegrationPage() {
           </CardHeader>
           <CardContent>
             <AirtableIntegration
-              user={user}
-              org={org}
-              integrationParams={integrationParams}
-              setIntegrationParams={setIntegrationParams}
+              userId={userId}
+              orgId={orgId}
             />
           </CardContent>
         </Card>
@@ -93,7 +89,7 @@ export default function AirtableIntegrationPage() {
             <CardDescription>View and manage your Airtable data</CardDescription>
           </CardHeader>
           <CardContent>
-            {integrationParams?.credentials ? (
+            {isConnected ? (
               <div className="space-y-4">
                 <Button onClick={fetchData} disabled={isLoading}>
                   {isLoading ? (
@@ -191,4 +187,3 @@ export default function AirtableIntegrationPage() {
     </div>
   )
 }
-

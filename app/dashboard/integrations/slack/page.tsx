@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
@@ -9,58 +10,33 @@ import { DataVisualization } from "@/app/components/dashboard/data-visualization
 import { MessageSquare, RefreshCw } from "lucide-react"
 
 export default function SlackIntegrationPage() {
-  const [integrationParams, setIntegrationParams] = useState<any>({})
   const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
 
-  // Mock user and org data
-  const user = "user123"
-  const org = "org456"
+  // TODO: Replace with actual user and org data from auth context
+  const userId = "user123"
+  const orgId = "org456"
 
   const fetchData = async () => {
     setIsLoading(true)
+    setError(null)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Mock data
-      const mockData = {
-        channels: [
-          { id: "channel1", name: "general", members: 25, messages: 1240 },
-          { id: "channel2", name: "random", members: 20, messages: 856 },
-          { id: "channel3", name: "project-alpha", members: 12, messages: 432 },
-        ],
-        messages: [
-          {
-            id: "msg1",
-            channel: "general",
-            user: "John Doe",
-            text: "Good morning team!",
-            timestamp: "2023-05-20T09:00:00Z",
-          },
-          {
-            id: "msg2",
-            channel: "general",
-            user: "Jane Smith",
-            text: "Morning everyone!",
-            timestamp: "2023-05-20T09:05:00Z",
-          },
-          {
-            id: "msg3",
-            channel: "project-alpha",
-            user: "Bob Johnson",
-            text: "Let's discuss the new feature",
-            timestamp: "2023-05-20T10:15:00Z",
-          },
-        ],
-        users: [
-          { id: "user1", name: "John Doe", status: "active" },
-          { id: "user2", name: "Jane Smith", status: "away" },
-          { id: "user3", name: "Bob Johnson", status: "active" },
-        ],
+      const status = await getIntegrationStatus("slack", userId)
+      setIsConnected(status.isConnected)
+      
+      if (!status.isConnected) {
+        throw new Error("Slack is not connected")
       }
 
-      setData(mockData)
+      if (status.status === "active") {
+        setData(status)
+      } else {
+        await syncIntegrationData("slack", userId)
+        const updatedStatus = await getIntegrationStatus("slack", userId)
+        setData(updatedStatus)
+      }
     } catch (error) {
       console.error("Error fetching data:", error)
     } finally {
@@ -80,7 +56,7 @@ export default function SlackIntegrationPage() {
             variant="outline"
             size="icon"
             onClick={fetchData}
-            disabled={isLoading || !integrationParams?.credentials}
+            disabled={isLoading || !isConnected}
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             <span className="sr-only">Refresh data</span>
@@ -101,10 +77,8 @@ export default function SlackIntegrationPage() {
           </CardHeader>
           <CardContent>
             <SlackIntegration
-              user={user}
-              org={org}
-              integrationParams={integrationParams}
-              setIntegrationParams={setIntegrationParams}
+              userId={userId}
+              orgId={orgId}
             />
           </CardContent>
         </Card>
@@ -115,7 +89,7 @@ export default function SlackIntegrationPage() {
             <CardDescription>View and manage your Slack data</CardDescription>
           </CardHeader>
           <CardContent>
-            {integrationParams?.credentials ? (
+            {isConnected ? (
               <div className="space-y-4">
                 <Button onClick={fetchData} disabled={isLoading}>
                   {isLoading ? (
@@ -167,7 +141,7 @@ export default function SlackIntegrationPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.channels.map((channel: any) => (
+                      {data.channels?.map((channel: any) => (
                         <tr key={channel.id} className="border-b">
                           <td className="p-2">#{channel.name}</td>
                           <td className="p-2">{channel.members}</td>
@@ -254,4 +228,3 @@ export default function SlackIntegrationPage() {
     </div>
   )
 }
-

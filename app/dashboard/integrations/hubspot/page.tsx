@@ -1,36 +1,42 @@
 "use client"
 
 import { useState } from "react"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { HubspotIntegration } from "@/app/components/integrations/hubspot-integration"
 import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { BarChart3, RefreshCw } from "lucide-react"
-import { apiPost } from "@/lib/api"
 
 export default function HubspotIntegrationPage() {
-  const [integrationParams, setIntegrationParams] = useState<any>({})
   const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
 
-  // Mock user and org data
-  const user = "user123"
-  const org = "org456"
+  // TODO: Replace with actual user and org data from auth context
+  const userId = "user123"
+  const orgId = "org456"
 
   const fetchData = async () => {
     setIsLoading(true)
+    setError(null)
     try {
-      if (!integrationParams?.credentials) {
-        throw new Error("No credentials available")
+      const status = await getIntegrationStatus("hubspot", userId)
+      setIsConnected(status.isConnected)
+      
+      if (!status.isConnected) {
+        throw new Error("HubSpot is not connected")
       }
 
-      // Make API call to backend to get Hubspot data
-      const hubspotData = await apiPost("/integrations/hubspot/load", {
-        credentials: integrationParams.credentials,
-      })
-
-      setData(hubspotData)
+      if (status.status === "active") {
+        setData(status)
+      } else {
+        await syncIntegrationData("hubspot", userId)
+        const updatedStatus = await getIntegrationStatus("hubspot", userId)
+        setData(updatedStatus)
+      }
     } catch (error) {
       console.error("Error fetching data:", error)
     } finally {
@@ -50,7 +56,7 @@ export default function HubspotIntegrationPage() {
             variant="outline"
             size="icon"
             onClick={fetchData}
-            disabled={isLoading || !integrationParams?.credentials}
+            disabled={isLoading || !isConnected}
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             <span className="sr-only">Refresh data</span>
@@ -71,10 +77,8 @@ export default function HubspotIntegrationPage() {
           </CardHeader>
           <CardContent>
             <HubspotIntegration
-              user={user}
-              org={org}
-              integrationParams={integrationParams}
-              setIntegrationParams={setIntegrationParams}
+              userId={userId}
+              orgId={orgId}
             />
           </CardContent>
         </Card>
@@ -85,7 +89,7 @@ export default function HubspotIntegrationPage() {
             <CardDescription>View and manage your Hubspot data</CardDescription>
           </CardHeader>
           <CardContent>
-            {integrationParams?.credentials ? (
+            {isConnected ? (
               <div className="space-y-4">
                 <Button onClick={fetchData} disabled={isLoading}>
                   {isLoading ? (
@@ -137,7 +141,7 @@ export default function HubspotIntegrationPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.map((contact: any) => (
+                      {data.contacts?.map((contact: any) => (
                         <tr key={contact.id} className="border-b">
                           <td className="p-2">{contact.name}</td>
                           <td className="p-2">{contact.email || "N/A"}</td>
@@ -183,4 +187,3 @@ export default function HubspotIntegrationPage() {
     </div>
   )
 }
-
