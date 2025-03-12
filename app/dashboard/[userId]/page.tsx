@@ -42,13 +42,28 @@ export default function UserDashboardPage() {
     fetchUserData()
   }, [userId, user])
 
-  if (isLoading) {
-    return <div>Loading...</div>
-  }
-
   if (!user) {
     return <div>Please log in to view your dashboard.</div>
   }
 
-  return <DashboardContent userId={userId as string} userData={userData} />
+  const emptyData = {
+    integrations: {
+      total: 0,
+      active: 0,
+      lastMonthTotal: 0,
+      lastMonthActive: 0
+    },
+    dataSyncs: {
+      total: 0,
+      lastWeekTotal: 0
+    },
+    usage: 0,
+    activeIntegrations: []
+  }
+
+  if (isLoading) {
+    return <DashboardContent userId={userId as string} userData={emptyData} isLoading={true} />
+  }
+
+  return <DashboardContent userId={userId as string} userData={userData || emptyData} isLoading={false} />
 }

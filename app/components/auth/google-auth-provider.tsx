@@ -23,19 +23,10 @@ interface GoogleAuthProviderProps {
 }
 
 export function GoogleAuthProvider({ children }: GoogleAuthProviderProps) {
+  const [mounted, setMounted] = useState(false)
   const [user, setUser] = useState<{ name: string | null; email: string | null; picture: string | null } | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedUser = localStorage.getItem("googleUser")
-      const token = localStorage.getItem("authToken")
-      if (storedUser && token) {
-        setUser(JSON.parse(storedUser))
-      }
-    }
-  }, [])
 
   const handleAuthMessage = useCallback((event: MessageEvent) => {
     if (event.data?.token && event.data?.user) {
@@ -55,35 +46,52 @@ export function GoogleAuthProvider({ children }: GoogleAuthProviderProps) {
     }
   }, [router])
 
+  // Handle auth message listener
   useEffect(() => {
-    window.addEventListener("message", handleAuthMessage)
-    return () => window.removeEventListener("message", handleAuthMessage)
-  }, [handleAuthMessage])
+    if (mounted) {
+      window.addEventListener("message", handleAuthMessage)
+      return () => window.removeEventListener("message", handleAuthMessage)
+    }
+  }, [handleAuthMessage, mounted])
 
-  const login = async () => {
+  // Handle initial hydration
+  useEffect(() => {
+    setMounted(true)
+    const storedUser = localStorage.getItem("googleUser")
+    const token = localStorage.getItem("authToken")
+    if (storedUser && token) {
+      setUser(JSON.parse(storedUser))
+    }
+  }, [])
+
+  const login = useCallback(async () => {
+    if (!mounted) return;
+    
     try {
-      setIsLoading(true)
+      setIsLoading(true);
       const response = await fetch(GOOGLE_AUTH_URL)
       const { url } = await response.json()
       
-      const width = 500
-      const height = 600
-      const left = window.screenX + (window.outerWidth - width) / 2
-      const top = window.screenY + (window.outerHeight - height) / 2
+      if (typeof window !== 'undefined') {
+        const width = 500
+        const height = 600
+        const left = window.screenX + (window.outerWidth - width) / 2
+        const top = window.screenY + (window.outerHeight - height) / 2
 
-      window.open(
-        url,
-        "Google Auth",
-        `width=${width},height=${height},left=${left},top=${top}`
-      )
+        window.open(
+          url,
+          "Google Auth",
+          `width=${width},height=${height},left=${left},top=${top}`
+        )
+      }
     } catch (error) {
       console.error("Failed to initiate Google login:", error)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [mounted])
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setIsLoading(true)
     try {
       setUser(null)
@@ -93,9 +101,13 @@ export function GoogleAuthProvider({ children }: GoogleAuthProviderProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [router])
 
-  return <GoogleAuthContext.Provider value={{ user, isLoading, login, logout }}>{children}</GoogleAuthContext.Provider>
+  return mounted ? (
+    <GoogleAuthContext.Provider value={{ user, isLoading, login, logout }}>
+      {children}
+    </GoogleAuthContext.Provider>
+  ) : null
 }
 
 export function useGoogleAuth() {

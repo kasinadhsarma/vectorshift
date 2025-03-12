@@ -14,6 +14,7 @@ import { DataVisualization } from "./data-visualization"
 
 interface DashboardContentProps {
   userId: string
+  isLoading: boolean
   userData: {
     integrations: {
       total: number
@@ -48,7 +49,7 @@ export function DashboardContent({ userId, userData }: DashboardContentProps) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" aria-busy={isLoading}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Integrations Dashboard</h1>
@@ -131,7 +132,8 @@ export function DashboardContent({ userId, userData }: DashboardContentProps) {
               <CardDescription>Manage your connected services</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {!isLoading && userData.activeIntegrations.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {userData.activeIntegrations.map((integration) => (
                   <div key={integration.name} className="flex flex-col items-center justify-between rounded-lg border p-4">
                     <div className="flex w-full items-center justify-between">
@@ -160,6 +162,11 @@ export function DashboardContent({ userId, userData }: DashboardContentProps) {
                   </div>
                 ))}
               </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No active integrations. Add one to get started.</p>
+                </div>
+              )}
             </CardContent>
             <CardFooter>
               <Button variant="outline" className="w-full">
