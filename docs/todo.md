@@ -10,7 +10,7 @@
 - [x] **Setup backend virtual environment**  
   - Navigate to the `/backend` directory and create a virtual environment:  
     ```bash
-    python -m venv venv
+    python3 -m venv venv
     source venv/bin/activate  # On macOS/Linux  
     venv\Scripts\activate     # On Windows  
     ```
