@@ -9,7 +9,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
-  SidebarFooter,
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
@@ -30,20 +29,25 @@ import {
   LayoutDashboard,
   Settings,
   LogOut,
-  Users,
+  User,
   BarChart3,
   FileSpreadsheet,
   MessageSquare,
   Lightbulb,
-  Search,
   HelpCircle,
   Plus,
+  ChevronDown,
 } from "lucide-react"
 import Link from "next/link"
-import { Input } from "@/app/components/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/app/components/ui/dropdown-menu"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/app/components/ui/dropdown-menu"
 
-// Create a new component for the sidebar content
 function SidebarContentComponent({ children }: { children: React.ReactNode }) {
   const { state } = useSidebar()
   const pathname = usePathname()
@@ -63,7 +67,6 @@ function SidebarContentComponent({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Get page title based on pathname
   const getPageTitle = () => {
     if (pathname === "/dashboard") return "Dashboard"
     if (pathname.includes("/integrations/notion")) return "Notion Integration"
@@ -77,13 +80,11 @@ function SidebarContentComponent({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <Sidebar variant="sidebar" collapsible="icon">
+      <Sidebar variant="sidebar" collapsible="icon" className="border-r">
         <SidebarHeader className="border-b p-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -99,43 +100,49 @@ function SidebarContentComponent({ children }: { children: React.ReactNode }) {
               <path d="M14 13h2" />
               <path d="M14 17h2" />
             </svg>
-            <span className="text-lg font-bold overflow-hidden transition-all duration-200" data-collapsed-hide>
-              VectorAI Task
-            </span>
-            <Badge variant="outline" className="ml-1 hidden md:inline-flex" data-collapsed-hide>
-              Beta
-            </Badge>
+            <div
+              className="ml-2 transition-all duration-300 overflow-hidden whitespace-nowrap"
+              data-state={state}
+              style={{
+                width: state === "collapsed" ? "0" : "auto",
+                maxWidth: state === "collapsed" ? "0" : "150px",
+                opacity: state === "collapsed" ? 0 : 1,
+              }}
+            >
+              <span className="text-lg font-bold">VectorAI Task</span>
+              <Badge variant="outline" className="ml-1 hidden md:inline-flex">
+                Beta
+              </Badge>
+            </div>
           </div>
         </SidebarHeader>
-        <SidebarContent>
+
+        <SidebarContent className="px-2 py-2">
           <SidebarGroup>
-            <SidebarGroupLabel className="sr-only">Dashboard</SidebarGroupLabel>
+            <SidebarGroupLabel className="px-2">Navigation</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === "/dashboard"} tooltip="Overview">
-                    <Link href="/dashboard">
+                    <Link href="/dashboard" className="flex items-center">
                       <LayoutDashboard className="h-4 w-4" />
-                      <span data-collapsed-hide>Overview</span>
+                      <span className="ml-2">Overview</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
           <SidebarGroup>
-            <SidebarGroupLabel className="sr-only">Integrations</SidebarGroupLabel>
+            <SidebarGroupLabel className="px-2">Integrations</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === "/dashboard/integrations/notion"}
-                    tooltip="Notion"
-                  >
-                    <Link href="/dashboard/integrations/notion">
+                  <SidebarMenuButton asChild isActive={pathname === "/dashboard/integrations/notion"} tooltip="Notion">
+                    <Link href="/dashboard/integrations/notion" className="flex items-center">
                       <Lightbulb className="h-4 w-4" />
-                      <span data-collapsed-hide>Notion</span>
+                      <span className="ml-2">Notion</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -145,9 +152,9 @@ function SidebarContentComponent({ children }: { children: React.ReactNode }) {
                     isActive={pathname === "/dashboard/integrations/airtable"}
                     tooltip="Airtable"
                   >
-                    <Link href="/dashboard/integrations/airtable">
+                    <Link href="/dashboard/integrations/airtable" className="flex items-center">
                       <FileSpreadsheet className="h-4 w-4" />
-                      <span data-collapsed-hide>Airtable</span>
+                      <span className="ml-2">Airtable</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -157,17 +164,17 @@ function SidebarContentComponent({ children }: { children: React.ReactNode }) {
                     isActive={pathname === "/dashboard/integrations/hubspot"}
                     tooltip="Hubspot"
                   >
-                    <Link href="/dashboard/integrations/hubspot">
+                    <Link href="/dashboard/integrations/hubspot" className="flex items-center">
                       <BarChart3 className="h-4 w-4" />
-                      <span data-collapsed-hide>Hubspot</span>
+                      <span className="ml-2">Hubspot</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild isActive={pathname === "/dashboard/integrations/slack"} tooltip="Slack">
-                    <Link href="/dashboard/integrations/slack">
+                    <Link href="/dashboard/integrations/slack" className="flex items-center">
                       <MessageSquare className="h-4 w-4" />
-                      <span data-collapsed-hide>Slack</span>
+                      <span className="ml-2">Slack</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -175,101 +182,101 @@ function SidebarContentComponent({ children }: { children: React.ReactNode }) {
                   <SidebarMenuButton asChild tooltip="Add Integration">
                     <Button variant="ghost" className="w-full justify-start gap-2 px-2">
                       <Plus className="h-4 w-4" />
-                      <span data-collapsed-hide>Add Integration</span>
+                      <span className="ml-2">Add Integration</span>
                     </Button>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+        </SidebarContent>
+
+        <div className="mt-auto">
           <SidebarGroup>
-            <SidebarGroupLabel className="sr-only">Settings</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname === "/dashboard/settings/profile"} tooltip="Profile">
-                    <Link href="/dashboard/settings/profile">
-                      <Users className="h-4 w-4" />
-                      <span data-collapsed-hide>Profile</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={pathname === "/dashboard/settings/account"} tooltip="Account">
-                    <Link href="/dashboard/settings/account">
-                      <Settings className="h-4 w-4" />
-                      <span data-collapsed-hide>Account</span>
-                    </Link>
-                  </SidebarMenuButton>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <SidebarMenuButton className="w-full">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage
+                              src={user?.picture ?? "/placeholder.svg?height=24&width=24"}
+                              alt={user?.name || "User"}
+                            />
+                            <AvatarFallback>{user?.name ? user.name[0].toUpperCase() : "U"}</AvatarFallback>
+                          </Avatar>
+                          <div
+                            className="flex-1 overflow-hidden transition-all duration-300"
+                            data-state={state}
+                            style={{
+                              maxWidth: state === "collapsed" ? "0" : "150px",
+                              opacity: state === "collapsed" ? 0 : 1,
+                            }}
+                          >
+                            <p className="truncate text-sm">{user?.name || "User"}</p>
+                          </div>
+                          <ChevronDown
+                            className="h-4 w-4 opacity-50 transition-all duration-300"
+                            data-state={state}
+                            style={{
+                              opacity: state === "collapsed" ? 0 : 0.5,
+                              maxWidth: state === "collapsed" ? "0" : "16px",
+                              overflow: "hidden",
+                            }}
+                          />
+                        </div>
+                      </SidebarMenuButton>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-56" align="start" side="right">
+                      <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard/settings/profile">
+                          <User className="mr-2 h-4 w-4" />
+                          Profile
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/dashboard/settings/account">
+                          <Settings className="mr-2 h-4 w-4" />
+                          Settings
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => {
+                          localStorage.removeItem("authToken")
+                          localStorage.removeItem("userInfo")
+                          localStorage.removeItem("googleUser")
+                          document.cookie = "authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;"
+                          router.replace("/login")
+                        }}
+                      >
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Log out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter className="border-t p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {user ? (
-                // Google user
-                <>
-                  <Avatar>
-                    <AvatarImage src={user.picture ?? "/placeholder.svg?height=32&width=32"} alt={user.name || "User"} />
-                    <AvatarFallback>{user.name ? user.name[0].toUpperCase() : "U"}</AvatarFallback>
-                  </Avatar>
-                  <div data-state={state} data-sidebar-expanded>
-                    <p className="text-sm font-medium line-clamp-1">{user.name}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-1">{user.email}</p>
-                  </div>
-                </>
-              ) : currentUser ? (
-                // Regular user
-                <>
-                  <Avatar>
-                    <AvatarFallback>
-                      {currentUser.name
-                        ? currentUser.name[0].toUpperCase()
-                        : currentUser.email
-                          ? currentUser.email[0].toUpperCase()
-                          : "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div data-state={state} data-sidebar-expanded>
-                    <p className="text-sm font-medium line-clamp-1">{currentUser.name || currentUser.email}</p>
-                    {currentUser.email && currentUser.name && (
-                      <p className="text-xs text-muted-foreground line-clamp-1">{currentUser.email}</p>
-                    )}
-                  </div>
-                </>
-              ) : null}
-            </div>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="rounded-full"
-              onClick={() => {
-                localStorage.removeItem("authToken")
-                localStorage.removeItem("userInfo")
-                localStorage.removeItem("googleUser")
-                document.cookie = "authToken=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;"
-                router.replace("/login")
-              }}
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="sr-only">Log out</span>
-            </Button>
-          </div>
-        </SidebarFooter>
+        </div>
+
         <SidebarRail />
       </Sidebar>
-      <SidebarInset>
+
+      <SidebarInset className="w-full max-w-full">
         <div className="flex h-full flex-col">
           <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex h-16 items-center justify-between px-6">
-              <div className="flex items-center gap-4">
+            <div className="flex h-16 items-center justify-between px-4 md:px-6">
+              <div className="flex items-center gap-2 md:gap-4">
                 <SidebarTrigger />
-                <h1 className="text-lg font-semibold">{getPageTitle()}</h1>
+                <h1 className="text-lg font-semibold truncate">{getPageTitle()}</h1>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 md:gap-4">
                 <Button variant="outline" size="icon" className="rounded-full">
                   <HelpCircle className="h-4 w-4" />
                   <span className="sr-only">Help</span>
@@ -291,22 +298,36 @@ function SidebarContentComponent({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </header>
-          <main className="flex-1 overflow-auto p-6">{children}</main>
+          <main className="flex-1 overflow-x-hidden p-4 md:p-6">{children}</main>
         </div>
       </SidebarInset>
     </>
   )
 }
 
-// Main layout component
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
   const router = useRouter()
-  
-  // Redirect if not authenticated
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  useEffect(() => {
+    const getCookieValue = (name: string) => {
+      const value = `; ${document.cookie}`
+      const parts = value.split(`; ${name}=`)
+      if (parts.length === 2) return parts.pop()?.split(";").shift()
+      return null
+    }
+
+    const sidebarState = getCookieValue("sidebar:state")
+    // Only set the state if we have a valid cookie value
+    if (sidebarState !== null) {
+      setSidebarOpen(sidebarState === "true")
+    }
+  }, [])
+
   useEffect(() => {
     const token = localStorage.getItem("authToken")
     if (!token && typeof window !== "undefined") {
@@ -314,11 +335,18 @@ export default function DashboardLayout({
     }
   }, [router])
 
+  const handleSidebarChange = (open: boolean) => {
+    setSidebarOpen(open)
+    // Set the cookie with a longer expiration and proper path
+    document.cookie = `sidebar:state=${open}; path=/; max-age=${60 * 60 * 24 * 30}`
+  }
+
   return (
-    <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-screen">
+    <SidebarProvider defaultOpen={sidebarOpen} open={sidebarOpen} onOpenChange={handleSidebarChange}>
+      <div className="flex min-h-screen w-full overflow-hidden">
         <SidebarContentComponent children={children} />
       </div>
     </SidebarProvider>
   )
 }
+

@@ -1,16 +1,17 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Badge } from "@/app/components/ui/badge"
 import { Progress } from "@/app/components/ui/progress"
-import { BarChart3, FileSpreadsheet, Lightbulb, MessageSquare, Plus, RefreshCw, Settings, Zap } from "lucide-react"
+import { BarChart3, FileSpreadsheet, Lightbulb, MessageSquare, Plus, RefreshCw, Settings, Zap } from 'lucide-react'
 import Link from "next/link"
 import { IntegrationsOverview } from "./integrations-overview"
 import { IntegrationForm } from "../integrations/integration-form"
 import { DataVisualization } from "./data-visualization"
+import { useSidebar } from "@/app/components/ui/sidebar"
 
 interface DashboardContentProps {
   userId: string
@@ -40,6 +41,7 @@ export function DashboardContent({ userId, userData }: DashboardContentProps) {
   const [activeIntegration, setActiveIntegration] = useState<string | null>(null)
   const [integrationData, setIntegrationData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const { state } = useSidebar()
 
   const refreshData = async () => {
     setIsLoading(true)
@@ -48,8 +50,20 @@ export function DashboardContent({ userId, userData }: DashboardContentProps) {
     setIsLoading(false)
   }
 
+  // Adjust layout when sidebar state changes
+  useEffect(() => {
+    // Force a re-render when sidebar state changes to ensure proper layout
+    const handleResize = () => {
+      window.dispatchEvent(new Event('resize'));
+    };
+    
+    if (state === 'expanded' || state === 'collapsed') {
+      setTimeout(handleResize, 300); // Wait for transition to complete
+    }
+  }, [state]);
+
   return (
-    <div className="space-y-6" aria-busy={isLoading}>
+    <div className={`space-y-6 transition-all duration-300 ${state === 'collapsed' ? 'md:pl-2' : ''}`} aria-busy={isLoading}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Integrations Dashboard</h1>

@@ -1,13 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Badge } from "@/app/components/ui/badge"
 import { Progress } from "@/app/components/ui/progress"
-import { BarChart3, FileSpreadsheet, Lightbulb, MessageSquare, Plus, RefreshCw, Settings, Zap } from "lucide-react"
+import { BarChart3, FileSpreadsheet, Lightbulb, MessageSquare, Plus, RefreshCw, Settings, Zap } from 'lucide-react'
 import Link from "next/link"
+import { useSidebar } from "@/app/components/ui/sidebar"
 
 // Import these components from your project or create them
 import { IntegrationsOverview } from "@/app/components/dashboard/integrations-overview"
@@ -18,6 +19,7 @@ export default function DashboardPage() {
   const [activeIntegration, setActiveIntegration] = useState<string | null>(null)
   const [integrationData, setIntegrationData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const { state } = useSidebar()
 
   const refreshData = async () => {
     setIsLoading(true)
@@ -26,8 +28,20 @@ export default function DashboardPage() {
     setIsLoading(false)
   }
 
+  // Adjust layout when sidebar state changes
+  useEffect(() => {
+    // Force a re-render when sidebar state changes to ensure proper layout
+    const handleResize = () => {
+      window.dispatchEvent(new Event("resize"))
+    }
+
+    if (state === "expanded" || state === "collapsed") {
+      setTimeout(handleResize, 300) // Wait for transition to complete
+    }
+  }, [state])
+
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 transition-all duration-300 w-full max-w-full overflow-x-hidden px-1 ${state === "collapsed" ? "md:pl-2" : ""}`}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Integrations Dashboard</h1>
@@ -45,7 +59,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Integrations</CardTitle>
@@ -102,7 +116,7 @@ export default function DashboardPage() {
               <CardDescription>Manage your connected services</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 <div className="flex flex-col items-center justify-between rounded-lg border p-4">
                   <div className="flex w-full items-center justify-between">
                     <div className="flex items-center space-x-2">
@@ -210,4 +224,3 @@ export default function DashboardPage() {
     </div>
   )
 }
-
