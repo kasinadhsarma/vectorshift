@@ -39,6 +39,7 @@ export default function NotionIntegrationPage() {
       }
     } catch (error) {
       console.error("Error fetching data:", error)
+      setError(error.message)
     } finally {
       setIsLoading(false)
     }

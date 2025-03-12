@@ -31,14 +31,15 @@ export default function SlackIntegrationPage() {
       }
 
       if (status.status === "active") {
-        setData(status)
+        setData(status.workspace)
       } else {
         await syncIntegrationData("slack", userId)
         const updatedStatus = await getIntegrationStatus("slack", userId)
-        setData(updatedStatus)
+        setData(updatedStatus.workspace)
       }
     } catch (error) {
       console.error("Error fetching data:", error)
+      setError(error.message)
     } finally {
       setIsLoading(false)
     }
@@ -136,16 +137,16 @@ export default function SlackIntegrationPage() {
                     <thead>
                       <tr className="border-b bg-muted/50">
                         <th className="p-2 text-left font-medium">Name</th>
-                        <th className="p-2 text-left font-medium">Members</th>
-                        <th className="p-2 text-left font-medium">Messages</th>
+                        <th className="p-2 text-left font-medium">Visibility</th>
+                        <th className="p-2 text-left font-medium">Creation Time</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.channels?.map((channel: any) => (
                         <tr key={channel.id} className="border-b">
                           <td className="p-2">#{channel.name}</td>
-                          <td className="p-2">{channel.members}</td>
-                          <td className="p-2">{channel.messages}</td>
+                          <td className="p-2">{channel.visibility ? "Public" : "Private"}</td>
+                          <td className="p-2">{new Date(parseInt(channel.creation_time) * 1000).toLocaleDateString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -162,27 +163,8 @@ export default function SlackIntegrationPage() {
                 <CardDescription>Recent messages from your Slack workspace</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="p-2 text-left font-medium">Channel</th>
-                        <th className="p-2 text-left font-medium">User</th>
-                        <th className="p-2 text-left font-medium">Message</th>
-                        <th className="p-2 text-left font-medium">Time</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.messages.map((message: any) => (
-                        <tr key={message.id} className="border-b">
-                          <td className="p-2">#{message.channel}</td>
-                          <td className="p-2">{message.user}</td>
-                          <td className="p-2">{message.text}</td>
-                          <td className="p-2">{new Date(message.timestamp).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">Message data will be displayed here when available</p>
                 </div>
               </CardContent>
             </Card>
@@ -195,30 +177,8 @@ export default function SlackIntegrationPage() {
                 <CardDescription>Users in your Slack workspace</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="p-2 text-left font-medium">Name</th>
-                        <th className="p-2 text-left font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.users.map((user: any) => (
-                        <tr key={user.id} className="border-b">
-                          <td className="p-2">{user.name}</td>
-                          <td className="p-2">
-                            <span
-                              className={`inline-block w-2 h-2 rounded-full mr-2 ${
-                                user.status === "active" ? "bg-green-500" : "bg-yellow-500"
-                              }`}
-                            ></span>
-                            {user.status}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">User data will be displayed here when available</p>
                 </div>
               </CardContent>
             </Card>

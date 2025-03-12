@@ -31,14 +31,15 @@ export default function HubspotIntegrationPage() {
       }
 
       if (status.status === "active") {
-        setData(status)
+        setData(status.workspace)
       } else {
         await syncIntegrationData("hubspot", userId)
         const updatedStatus = await getIntegrationStatus("hubspot", userId)
-        setData(updatedStatus)
+        setData(updatedStatus.workspace)
       }
     } catch (error) {
       console.error("Error fetching data:", error)
+      setError(error.message)
     } finally {
       setIsLoading(false)
     }
