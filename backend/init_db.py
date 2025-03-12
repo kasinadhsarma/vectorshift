@@ -44,6 +44,7 @@ def create_keyspace_and_tables():
                 created_at timestamp
             )
         """)
+        print("Users table created successfully.")
 
         # Create password_reset_tokens table
         print("Creating password_reset_tokens table...")
@@ -55,6 +56,7 @@ def create_keyspace_and_tables():
                 PRIMARY KEY (user_email, reset_token)
             )
         """)
+        print("Password reset tokens table created successfully.")
 
         # Create user_credentials table
         print("Creating user_credentials table...")
@@ -70,6 +72,7 @@ def create_keyspace_and_tables():
                 PRIMARY KEY (user_id, provider)
             )
         """)
+        print("User credentials table created successfully.")
 
         # Create user_integrations table
         print("Creating user_integrations table...")
@@ -102,6 +105,7 @@ def create_keyspace_and_tables():
                 PRIMARY KEY ((user_id, provider), item_id)
             )
         """)
+        print("User integrations table created successfully.")
 
         # Create user_profiles table
         print("Creating user_profiles table...")
@@ -118,6 +122,7 @@ def create_keyspace_and_tables():
                 updated_at timestamp
             )
         """)
+        print("User profiles table created successfully.")
 
         print("Database initialization completed successfully!")
 
