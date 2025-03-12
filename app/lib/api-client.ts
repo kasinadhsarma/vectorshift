@@ -66,12 +66,37 @@ export async function uploadProfileImage(file: File): Promise<string> {
 }
 
 // Integration Types
-export interface IntegrationStatus { // Added export
+export interface IntegrationStatus {
   isConnected: boolean;
   lastSync?: string;
   status: 'active' | 'inactive' | 'error';
   error?: string;
   credentials?: IntegrationCredentials;
+}
+
+export interface AirtableBase {
+  id: string;
+  name: string;
+  last_modified_time: string;
+  type: 'base';
+  url?: string;
+}
+
+export interface HubSpotContact {
+  id: string;
+  name: string;
+  email?: string;
+  company?: string;
+  last_modified_time: string;
+  type: 'contact';
+}
+
+export interface SlackChannel {
+  id: string;
+  name: string;
+  visibility: boolean;
+  creation_time?: string;
+  type: 'channel';
 }
 
 interface IntegrationCredentials {
@@ -84,7 +109,7 @@ interface IntegrationCredentials {
 
 // Integration API Methods
 export async function authorizeIntegration(provider: string, userId: string, orgId: string): Promise<string> {
-  const response = await fetch(`/integrations/${provider}/authorize`, {
+  const response = await fetch(`/api/integrations/${provider}/authorize`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -102,7 +127,7 @@ export async function authorizeIntegration(provider: string, userId: string, org
 }
 
 export async function getIntegrationStatus(provider: string, userId: string): Promise<IntegrationStatus> {
-  const response = await fetch(`/integrations/${provider}/status`, {
+  const response = await fetch(`/api/integrations/${provider}/status?user_id=${userId}`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
     },
@@ -116,7 +141,7 @@ export async function getIntegrationStatus(provider: string, userId: string): Pr
 }
 
 export async function disconnectIntegration(provider: string, userId: string): Promise<void> {
-  const response = await fetch(`/integrations/${provider}/disconnect`, {
+  const response = await fetch(`/api/integrations/${provider}/disconnect`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -131,7 +156,7 @@ export async function disconnectIntegration(provider: string, userId: string): P
 }
 
 export async function syncIntegrationData(provider: string, userId: string): Promise<void> {
-  const response = await fetch(`/integrations/${provider}/sync`, {
+  const response = await fetch(`/api/integrations/${provider}/sync`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -147,7 +172,7 @@ export async function syncIntegrationData(provider: string, userId: string): Pro
 
 // Integration-specific methods
 export async function getNotionPages(workspaceId: string): Promise<any[]> {
-  const response = await fetch(`/integrations/notion/pages?workspaceId=${workspaceId}`, {
+  const response = await fetch(`/api/integrations/notion/pages?workspaceId=${workspaceId}`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
     },
@@ -160,8 +185,22 @@ export async function getNotionPages(workspaceId: string): Promise<any[]> {
   return response.json();
 }
 
+export async function getAirtableBases(workspaceId: string): Promise<AirtableBase[]> {
+  const response = await fetch(`/api/integrations/airtable/bases?workspaceId=${workspaceId}`, {
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('token')}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch Airtable bases');
+  }
+
+  return response.json();
+}
+
 export async function getAirtableRecords(baseId: string, tableId: string): Promise<any[]> {
-  const response = await fetch(`/integrations/airtable/records?baseId=${baseId}&tableId=${tableId}`, {
+  const response = await fetch(`/api/integrations/airtable/records?baseId=${baseId}&tableId=${tableId}`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
     },
@@ -174,8 +213,8 @@ export async function getAirtableRecords(baseId: string, tableId: string): Promi
   return response.json();
 }
 
-export async function getSlackChannels(): Promise<any[]> {
-  const response = await fetch('/integrations/slack/channels', {
+export async function getSlackChannels(workspaceId: string): Promise<SlackChannel[]> {
+  const response = await fetch(`/api/integrations/slack/channels?workspaceId=${workspaceId}`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
     },
@@ -188,8 +227,8 @@ export async function getSlackChannels(): Promise<any[]> {
   return response.json();
 }
 
-export async function getHubspotContacts(): Promise<any[]> {
-  const response = await fetch('/integrations/hubspot/contacts', {
+export async function getHubspotContacts(workspaceId: string): Promise<HubSpotContact[]> {
+  const response = await fetch(`/api/integrations/hubspot/contacts?workspaceId=${workspaceId}`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
     },

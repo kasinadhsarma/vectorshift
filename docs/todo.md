@@ -1,6 +1,4 @@
-### ✅ **VectorShift Technical Assessment - To-Do List**  
-
-#### **1️⃣ Setup the Project**  
+### **1️⃣ Setup the Project**  
 - [x] **Install frontend dependencies**  
   - Navigate to the `/app` directory and run:  
     ```bash
@@ -9,12 +7,24 @@
     ```
   - This ensures that all required frontend libraries are installed and the application runs correctly.
 
+- [x] **Setup backend virtual environment**  
+  - Navigate to the `/backend` directory and create a virtual environment:  
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On macOS/Linux  
+    venv\Scripts\activate     # On Windows  
+    ```
+  - Install dependencies:  
+    ```bash
+    pip install -r requirements.txt
+    ```
+
 - [x] **Install backend dependencies and run the server**  
-  - Navigate to the `/backend` directory and run:  
+  - Start the FastAPI server:  
     ```bash
     uvicorn main:app --reload
     ```
-  - This starts the FastAPI backend server to handle API requests.
+  - This launches the backend to handle API requests.
 
 - [x] **Start Redis instance**  
   - Run the command:  
@@ -23,49 +33,106 @@
     ```
   - Redis is used for handling background tasks and caching.
 
-#### **2️⃣ Implement HubSpot OAuth Integration**  
+---
+
+### **2️⃣ Implement OAuth for All Integrations**  
+
+#### **🔹 Notion OAuth Integration**  
+- [ ] **Modify `notion.py` to implement OAuth authentication**  
+  - Implement `authorize_notion()` → Redirects users to Notion's OAuth consent screen.  
+  - Implement `oauth2callback_notion()` → Handles the OAuth callback and retrieves tokens.  
+  - Implement `get_notion_credentials()` → Fetch stored credentials for authentication.  
+
+- [ ] **Obtain client credentials from Notion**  
+  - Sign up for a Notion developer account.  
+  - Create an app and get the **Client ID & Client Secret** for OAuth authentication.  
+
+- [ ] **Implement OAuth in frontend (`/app/dashboard/integrations/notion/page.tsx`)**  
+  - Modify `notion/page.tsx` to enable user authentication via OAuth.  
+
+#### **🔹 Airtable OAuth Integration**  
+- [ ] **Modify `airtable.py` to implement OAuth authentication**  
+  - Implement `authorize_airtable()` → Redirects users to Airtable's OAuth consent screen.  
+  - Implement `oauth2callback_airtable()` → Handles the OAuth callback and retrieves tokens.  
+  - Implement `get_airtable_credentials()` → Fetch stored credentials for authentication.  
+
+- [ ] **Obtain client credentials from Airtable**  
+  - Sign up for an Airtable developer account.  
+  - Create an app and get the **Client ID & Client Secret** for OAuth authentication.  
+
+- [ ] **Implement OAuth in frontend (`/app/dashboard/integrations/airtable/page.tsx`)**  
+  - Modify `airtable/page.tsx` to enable user authentication via OAuth.  
+
+#### **🔹 HubSpot OAuth Integration**  
 - [ ] **Modify `hubspot.py` to implement OAuth authentication**  
-  - Complete the following functions in `backend/integrations/hubspot.py`:  
-    - `authorize_hubspot` → Redirects users to HubSpot's OAuth consent screen.  
-    - `oauth2callback_hubspot` → Handles the OAuth callback and retrieves access tokens.  
-    - `get_hubspot_credentials` → Fetches stored credentials for authentication.  
-  - Reference `airtable.py` and `notion.py` for implementation patterns.
+  - Implement `authorize_hubspot()` → Redirects users to HubSpot's OAuth consent screen.  
+  - Implement `oauth2callback_hubspot()` → Handles the OAuth callback and retrieves tokens.  
+  - Implement `get_hubspot_credentials()` → Fetch stored credentials for authentication.  
 
 - [ ] **Obtain client credentials from HubSpot**  
-  - Sign up for a HubSpot developer account.
-  - Create an app and get the **Client ID & Client Secret** for OAuth authentication.
+  - Sign up for a HubSpot developer account.  
+  - Create an app and get the **Client ID & Client Secret** for OAuth authentication.  
 
-- [ ] **Implement OAuth in frontend (`hubspot.js`)**  
-  - Modify `frontend/src/integrations/hubspot.js` to enable user authentication via OAuth.
-  - Ensure integration is similar to `airtable.js` and `notion.js`.
+- [ ] **Implement OAuth in frontend (`/app/dashboard/integrations/hubspot/page.tsx`)**  
+  - Modify `hubspot/page.tsx` to enable user authentication via OAuth.  
 
-#### **3️⃣ Load HubSpot Items**  
-- [ ] **Fetch and display HubSpot items**  
-  - Implement `get_items_hubspot` in `backend/integrations/hubspot.py`.
-  - Use the HubSpot API to retrieve data and convert it into `IntegrationItem` objects.
-  - Verify that fetched data is correctly displayed.
+#### **🔹 Slack OAuth Integration**  
+- [ ] **Modify `slack.py` to implement OAuth authentication**  
+  - Implement `authorize_slack()` → Redirects users to Slack's OAuth consent screen.  
+  - Implement `oauth2callback_slack()` → Handles the OAuth callback and retrieves tokens.  
+  - Implement `get_slack_credentials()` → Fetch stored credentials for authentication.  
 
-#### **4️⃣ Final Testing & Debugging**  
-- [ ] **Test OAuth authentication**  
-  - Ensure users can successfully authenticate via HubSpot.
+- [ ] **Obtain client credentials from Slack**  
+  - Sign up for a Slack developer account.  
+  - Create an app and get the **Client ID & Client Secret** for OAuth authentication.  
 
-- [ ] **Verify API responses**  
-  - Check that HubSpot data is being retrieved and displayed correctly.
+- [ ] **Implement OAuth in frontend (`/app/dashboard/integrations/slack/page.tsx`)**  
+  - Modify `slack/page.tsx` to enable user authentication via OAuth.  
+
+---
+
+### **3️⃣ Fetch & Display Data for All Integrations**  
+- [ ] **Fetch and display Notion data**  
+  - Implement `get_items_notion()` in `notion.py`.  
+  - Use the Notion API to retrieve data and convert it into `IntegrationItem` objects.  
+  - Verify that fetched data is correctly displayed in `/app/dashboard/integrations/notion/page.tsx`.  
+
+- [ ] **Fetch and display Airtable data**  
+  - Implement `get_items_airtable()` in `airtable.py`.  
+  - Use the Airtable API to retrieve data and convert it into `IntegrationItem` objects.  
+  - Verify that fetched data is correctly displayed in `/app/dashboard/integrations/airtable/page.tsx`.  
+
+- [ ] **Fetch and display HubSpot data**  
+  - Implement `get_items_hubspot()` in `hubspot.py`.  
+  - Use the HubSpot API to retrieve data and convert it into `IntegrationItem` objects.  
+  - Verify that fetched data is correctly displayed in `/app/dashboard/integrations/hubspot/page.tsx`.  
+
+- [ ] **Fetch and display Slack data**  
+  - Implement `get_items_slack()` in `slack.py`.  
+  - Use the Slack API to retrieve data and convert it into `IntegrationItem` objects.  
+  - Verify that fetched data is correctly displayed in `/app/dashboard/integrations/slack/page.tsx`.  
+
+---
+
+### **4️⃣ Final Testing & Debugging**  
+- [ ] **Test OAuth authentication for all integrations**  
+  - Ensure users can successfully authenticate via Notion, Airtable, HubSpot, and Slack.  
+
+- [ ] **Verify API responses for all integrations**  
+  - Check that data is being retrieved and displayed correctly.  
 
 - [ ] **Fix any bugs or issues**  
-  - Debug errors and refine code for better performance.
+  - Debug errors and refine code for better performance.  
 
-#### **5️⃣ Prepare Submission**  
+---
+
+### **5️⃣ Prepare Submission**  
 - [ ] **Zip completed code**  
-  - Name the zip file as `YourName_Technical_Assessment.zip`.
+  - Name the zip file as `kasinadhsarma_Technical_Assessment.zip`.  
 
 - [ ] **Record a walkthrough video**  
-  - Explain your implementation, code structure, and demonstrate functionality.
-  - Save the file as `YourName_ScreenRecording.mp4`.
+  - Explain your implementation, code structure, and demonstrate functionality.  
+  - Save the file as `kasinadhsarma_ScreenRecording.mp4`.  
 
 - [ ] **Submit via Google Form**  
-  - Ensure submission is completed before **March 16, 11:59 PM IST**.
-
----  
-Let me know if you need help with OAuth integration, API calls, or frontend setup! 🚀
-
+  - Ensure submission is completed before **March 16, 11:59 PM IST**.  

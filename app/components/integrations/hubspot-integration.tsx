@@ -1,58 +1,119 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/app/components/ui/button"
-import { Input } from "@/app/components/ui/input"
-import { Label } from "@/app/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/app/components/ui/badge"
-import { Loader2 } from "lucide-react"
+import { Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import {
+  authorizeIntegration,
+  getIntegrationStatus,
+  disconnectIntegration,
+  getHubspotContacts,
+  syncIntegrationData,
+  IntegrationStatus,
+  HubSpotContact,
+} from "@/app/lib/api-client"
 
 interface HubspotIntegrationProps {
-  user: string
-  org: string
-  integrationParams: any
-  setIntegrationParams: (params: any) => void
+  userId: string
+  orgId: string
 }
 
-export function HubspotIntegration({ user, org, integrationParams, setIntegrationParams }: HubspotIntegrationProps) {
-  const { toast } = useToast()
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [apiKey, setApiKey] = useState("")
+interface HubSpotWorkspace {
+  id: string
+  name: string
+  contacts: HubSpotContact[]
+}
 
-  const handleConnect = async () => {
-    if (!apiKey) {
-      toast({
-        title: "Error",
-        description: "Please enter your Hubspot API key",
-        variant: "destructive",
-      })
-      return
+export function HubspotIntegration({ userId, orgId }: HubspotIntegrationProps) {
+  const [isConnected, setIsConnected] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [workspace, setWorkspace] = useState<HubSpotWorkspace | null>(null)
+  const { toast } = useToast()
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const status: IntegrationStatus = await getIntegrationStatus('hubspot', userId)
+        setIsConnected(status.isConnected)
+
+        if (status.isConnected && status.credentials?.workspaceId) {
+          const contacts = await getHubspotContacts(status.credentials.workspaceId)
+          setWorkspace({
+            id: status.credentials.workspaceId,
+            name: 'HubSpot Workspace',
+            contacts
+          })
+        }
+
+        if (status.error) {
+          setError(status.error)
+        }
+      } catch (error) {
+        console.error('Error checking HubSpot status:', error)
+        setError('Failed to check integration status')
+      } finally {
+        setIsLoading(false)
+      }
     }
 
-    setIsConnecting(true)
+    checkStatus()
+  }, [userId])
 
+  const handleConnect = async () => {
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      setIsConnecting(true)
+      setError(null)
 
-      setIntegrationParams({
-        ...integrationParams,
-        credentials: {
-          apiKey,
-        },
-        status: "connected",
-        connectedAt: new Date().toISOString(),
-      })
+      const authUrl = await authorizeIntegration('hubspot', userId, orgId)
 
-      toast({
-        title: "Connected",
-        description: "Successfully connected to Hubspot",
+      const width = 600
+      const height = 700
+      const left = window.screenX + (window.outerWidth - width) / 2
+      const top = window.screenY + (window.outerHeight - height) / 2
+
+      const authWindow = window.open(
+        authUrl,
+        'HubSpot Authorization',
+        `width=${width},height=${height},left=${left},top=${top}`
+      )
+
+      window.addEventListener('message', async (event) => {
+        if (event.data.type === 'hubspot-oauth-callback') {
+          if (event.data.success) {
+            setIsConnected(true)
+            toast({
+              title: "Connected successfully",
+              description: "Successfully connected to HubSpot",
+            })
+
+            const contacts = await getHubspotContacts(event.data.workspaceId)
+            setWorkspace({
+              id: event.data.workspaceId,
+              name: 'HubSpot Workspace',
+              contacts
+            })
+          } else {
+            setError('Failed to connect to HubSpot')
+            toast({
+              title: "Connection failed",
+              description: event.data.error || "Failed to connect to HubSpot",
+              variant: "destructive",
+            })
+          }
+          authWindow?.close()
+        }
       })
     } catch (error) {
+      console.error('Error connecting to HubSpot:', error)
+      setError('Failed to initiate HubSpot connection')
       toast({
-        title: "Error",
-        description: "Failed to connect to Hubspot",
+        title: "Connection failed",
+        description: "Failed to connect to HubSpot",
         variant: "destructive",
       })
     } finally {
@@ -61,93 +122,136 @@ export function HubspotIntegration({ user, org, integrationParams, setIntegratio
   }
 
   const handleDisconnect = async () => {
-    setIsConnecting(true)
-
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      setIntegrationParams({
-        ...integrationParams,
-        credentials: null,
-        status: "disconnected",
-      })
-
+      await disconnectIntegration('hubspot', userId)
+      setIsConnected(false)
+      setWorkspace(null)
       toast({
         title: "Disconnected",
-        description: "Successfully disconnected from Hubspot",
+        description: "Successfully disconnected from HubSpot",
       })
     } catch (error) {
+      console.error('Error disconnecting from HubSpot:', error)
       toast({
         title: "Error",
-        description: "Failed to disconnect from Hubspot",
+        description: "Failed to disconnect from HubSpot",
         variant: "destructive",
       })
-    } finally {
-      setIsConnecting(false)
     }
   }
 
+  const handleSync = async () => {
+    try {
+      setIsSyncing(true)
+      await syncIntegrationData('hubspot', userId)
+
+      if (workspace) {
+        const contacts = await getHubspotContacts(workspace.id)
+        setWorkspace({
+          ...workspace,
+          contacts
+        })
+      }
+
+      toast({
+        title: "Sync complete",
+        description: "Successfully synced HubSpot data",
+      })
+    } catch (error) {
+      console.error('Error syncing HubSpot data:', error)
+      toast({
+        title: "Sync failed",
+        description: "Failed to sync HubSpot data",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    )
+  }
+
   return (
-    <div className="space-y-4">
-      {integrationParams?.credentials ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <h3 className="text-lg font-medium">Connection Status</h3>
-              <div className="flex items-center gap-2">
-                <Badge
-                  variant="outline"
-                  className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400"
-                >
-                  Connected
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Connected{" "}
-                  {integrationParams.connectedAt
-                    ? new Date(integrationParams.connectedAt).toLocaleDateString()
-                    : "recently"}
-                </span>
-              </div>
-            </div>
-            <Button variant="outline" onClick={handleDisconnect} disabled={isConnecting}>
-              {isConnecting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Disconnecting...
-                </>
-              ) : (
-                "Disconnect"
-              )}
-            </Button>
-          </div>
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h3 className="text-lg font-medium">HubSpot Integration</h3>
+        <p className="text-sm text-muted-foreground">
+          Connect to your HubSpot workspace to access and sync your contacts.
+        </p>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md">
+          <AlertCircle className="h-4 w-4" />
+          {error}
         </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="api-key">Hubspot API Key</Label>
-            <Input
-              id="api-key"
-              type="password"
-              placeholder="Enter your Hubspot API key"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">You can find your API key in your Hubspot account settings.</p>
-          </div>
-          <Button onClick={handleConnect} disabled={isConnecting || !apiKey}>
-            {isConnecting ? (
+      )}
+
+      <div className="flex gap-4">
+        <Button
+          onClick={isConnected ? handleDisconnect : handleConnect}
+          disabled={isConnecting || isSyncing}
+          variant={isConnected ? "outline" : "default"}
+        >
+          {isConnected ? (
+            <>
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              Disconnect HubSpot
+            </>
+          ) : isConnecting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Connecting...
+            </>
+          ) : (
+            "Connect to HubSpot"
+          )}
+        </Button>
+
+        {isConnected && (
+          <Button
+            onClick={handleSync}
+            disabled={isSyncing}
+            variant="outline"
+          >
+            {isSyncing ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Connecting...
+                Syncing...
               </>
             ) : (
-              "Connect to Hubspot"
+              "Sync Data"
             )}
           </Button>
+        )}
+      </div>
+
+      {workspace && workspace.contacts.length > 0 && (
+        <div className="border rounded-lg p-4">
+          <h4 className="font-medium mb-2">Connected Contacts</h4>
+          <div className="space-y-2">
+            {workspace.contacts.map(contact => (
+              <div key={contact.id} className="flex justify-between text-sm p-2 bg-muted/50 rounded">
+                <span className="flex flex-col">
+                  <span>{contact.name}</span>
+                  {contact.email && (
+                    <span className="text-xs text-muted-foreground">{contact.email}</span>
+                  )}
+                </span>
+                <span className="text-muted-foreground">
+                  Last modified: {new Date(contact.last_modified_time).toLocaleDateString()}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   )
 }
-

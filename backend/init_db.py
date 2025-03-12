@@ -49,10 +49,10 @@ def create_keyspace_and_tables():
         print("Creating password_reset_tokens table...")
         session.execute("""
             CREATE TABLE IF NOT EXISTS password_reset_tokens (
-                email text,
-                token text,
+                user_email text,
+                reset_token text,
                 created_at timestamp,
-                PRIMARY KEY (email, token)
+                PRIMARY KEY (user_email, reset_token)
             )
         """)
 
@@ -62,8 +62,11 @@ def create_keyspace_and_tables():
             CREATE TABLE IF NOT EXISTS user_credentials (
                 user_id text,
                 provider text,
-                credentials map<text, text>,
+                access_token text,
+                refresh_token text,
+                expires_at timestamp,
                 created_at timestamp,
+                metadata map<text, text>,
                 PRIMARY KEY (user_id, provider)
             )
         """)
@@ -73,12 +76,30 @@ def create_keyspace_and_tables():
         session.execute("""
             CREATE TABLE IF NOT EXISTS user_integrations (
                 user_id text,
-                name text,
+                provider text,
+                org_id text,
                 status text,
                 last_sync timestamp,
-                workspace_count int,
                 settings map<text, text>,
-                PRIMARY KEY (user_id, name)
+                PRIMARY KEY (user_id, provider)
+            )
+        """)
+
+        # Create integration_items table
+        print("Creating integration_items table...")
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS integration_items (
+                user_id text,
+                provider text,
+                item_id text,
+                name text,
+                item_type text,
+                url text,
+                creation_time timestamp,
+                last_modified_time timestamp,
+                parent_id text,
+                metadata map<text, text>,
+                PRIMARY KEY ((user_id, provider), item_id)
             )
         """)
 

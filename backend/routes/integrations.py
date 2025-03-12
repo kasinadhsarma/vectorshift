@@ -1,4 +1,4 @@
-from fastapi import Request,APIRouter, HTTPException, Depends
+from fastapi import Request, APIRouter, HTTPException, Depends, Form
 from fastapi.security import HTTPBearer
 from typing import Dict
 from cassandra_client import CassandraClient
@@ -33,6 +33,37 @@ async def get_current_user(token: str = Depends(security)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user_data
+
+@router.post("/api/integrations/{provider}/authorize")
+async def authorize_integration(
+    provider: str,
+    request: Request,
+    current_user: Dict = Depends(get_current_user)
+):
+    """Authorize an integration"""
+    try:
+        form = await request.form()
+        user_id = form.get("userId")
+        org_id = form.get("orgId")
+
+        if not user_id or not org_id:
+            raise HTTPException(status_code=400, detail="Missing userId or orgId")
+
+        if provider == "notion":
+            auth_url = await authorize_notion(user_id, org_id)
+        elif provider == "airtable":
+            auth_url = await authorize_airtable(user_id, org_id)
+        elif provider == "slack":
+            auth_url = await authorize_slack(user_id, org_id)
+        elif provider == "hubspot":
+            auth_url = await authorize_hubspot(user_id, org_id)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+
+        return {"url": auth_url}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/integrations/{provider}/status")
 async def get_integration_status(
@@ -95,8 +126,52 @@ async def get_integration_status(
                 }
             }
         
-        # Add similar blocks for Slack and HubSpot
-        
+        elif provider == "slack":
+            credentials = await get_slack_credentials(user_id, integration.get("org_id", ""))
+            items = await get_items_slack(credentials)
+            return {
+                "isConnected": True,
+                "status": "active",
+                "lastSync": integration.get("last_sync"),
+                "workspace": {
+                    "id": credentials.get("workspace_id"),
+                    "name": credentials.get("team_name", "Slack Workspace"),
+                    "icon": credentials.get("team_icon"),
+                    "channels": [
+                        {
+                            "id": item.id,
+                            "name": item.name,
+                            "visibility": item.visibility,
+                            "creation_time": item.creation_time
+                        }
+                        for item in items
+                    ]
+                }
+            }
+
+        elif provider == "hubspot":
+            credentials = await get_hubspot_credentials(user_id, integration.get("org_id", ""))
+            items = await get_items_hubspot(credentials)
+            return {
+                "isConnected": True,
+                "status": "active",
+                "lastSync": integration.get("last_sync"),
+                "workspace": {
+                    "id": credentials.get("hub_id"),
+                    "name": "HubSpot Account",
+                    "contacts": [
+                        {
+                            "id": item.id,
+                            "name": item.name,
+                            "email": getattr(item, 'email', None),
+                            "company": getattr(item, 'company', None),
+                            "last_modified_time": item.last_modified_time
+                        }
+                        for item in items
+                    ]
+                }
+            }
+
         # Default response for unsupported provider
         return {
             "isConnected": True,
@@ -135,7 +210,15 @@ async def sync_integration(
             items = await get_items_airtable(credentials)
             await cassandra.update_integration_items(user_id, provider, items)
             
-        # Add similar blocks for Slack and HubSpot
+        elif provider == "slack":
+            credentials = await get_slack_credentials(user_id, integration.get("org_id", ""))
+            items = await get_items_slack(credentials)
+            await cassandra.update_integration_items(user_id, provider, items)
+            
+        elif provider == "hubspot":
+            credentials = await get_hubspot_credentials(user_id, integration.get("org_id", ""))
+            items = await get_items_hubspot(credentials)
+            await cassandra.update_integration_items(user_id, provider, items)
 
         # Return updated status
         return await get_integration_status(provider, user_id)
