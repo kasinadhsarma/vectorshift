@@ -1,43 +1,88 @@
 "use client"
 
-import type React from "react"
-import { useState, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Input } from "@/app/components/ui/input"
 import { Label } from "@/app/components/ui/label"
-import { Textarea } from "@/app/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Icons } from "@/app/components/icons"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select"
+import { getUserProfile, updateUserProfile, uploadProfileImage } from "@/app/lib/api-client"
 
 interface Profile {
-  name: string
-  email: string
-  bio: string
-  avatar: string
+  email: string;
+  fullName: string;
+  displayName: string;
+  avatarUrl: string;
+  company: string;
+  jobTitle: string;
+  timezone: string;
+  preferences: Record<string, string>;
 }
 
+const timezones = [
+  "UTC",
+  "America/New_York",
+  "America/Los_Angeles",
+  "Europe/London",
+  "Asia/Tokyo",
+  "Asia/Dubai",
+  "Asia/Kolkata",
+  "Australia/Sydney"
+]
+
 export default function ProfileSettingsPage() {
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [errors, setErrors] = useState<Partial<Profile>>({})
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [profile, setProfile] = useState<Profile>({
-    name: "John Doe",
-    email: "john@example.com",
-    bio: "Product Manager with 5+ years of experience in SaaS products.",
-    avatar: "/placeholder.svg?height=100&width=100",
+    email: "",
+    fullName: "",
+    displayName: "",
+    avatarUrl: "",
+    company: "",
+    jobTitle: "",
+    timezone: "UTC",
+    preferences: {}
   })
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        // Get email from localStorage or context
+        const email = localStorage.getItem('userEmail')
+        if (!email) {
+          throw new Error('User email not found')
+        }
+
+        const profileData = await getUserProfile(email)
+        setProfile(profileData)
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to load profile",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadProfile()
+  }, [toast])
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Profile> = {}
 
-    if (!profile.name.trim()) {
-      newErrors.name = "Name is required"
+    if (!profile.fullName?.trim()) {
+      newErrors.fullName = "Name is required"
     }
 
-    if (!profile.email.trim()) {
+    if (!profile.email?.trim()) {
       newErrors.email = "Email is required"
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) {
       newErrors.email = "Please enter a valid email address"
@@ -65,11 +110,12 @@ export default function ProfileSettingsPage() {
     }
 
     try {
-      const previewUrl = URL.createObjectURL(file)
-      setProfile({ ...profile, avatar: previewUrl })
+      setIsSaving(true)
+      const avatarUrl = await uploadProfileImage(file)
+      setProfile({ ...profile, avatarUrl })
 
-      // Simulated upload
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      // Update profile with new avatar URL
+      await updateUserProfile(profile.email, { avatarUrl })
 
       toast({
         title: "Success",
@@ -81,6 +127,8 @@ export default function ProfileSettingsPage() {
         description: "Failed to upload avatar",
         variant: "destructive",
       })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -96,10 +144,10 @@ export default function ProfileSettingsPage() {
       return
     }
 
-    setIsLoading(true)
+    setIsSaving(true)
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await updateUserProfile(profile.email, profile)
       toast({
         title: "Profile updated",
         description: "Your profile has been updated successfully.",
@@ -111,8 +159,16 @@ export default function ProfileSettingsPage() {
         variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
+      setIsSaving(false)
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Icons.spinner className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -120,7 +176,7 @@ export default function ProfileSettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Profile Settings</h1>
-          <p className="text-muted-foreground">Manage your personal information</p>
+          <p className="text-muted-foreground">Manage your personal information and preferences</p>
         </div>
       </div>
 
@@ -128,24 +184,24 @@ export default function ProfileSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Personal Information</CardTitle>
-            <CardDescription>Update your personal details and profile picture</CardDescription>
+            <CardDescription>Update your profile information and preferences</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6">
               <div className="relative flex-shrink-0">
                 <img
-                  src={profile.avatar || "/placeholder.svg"}
+                  src={profile.avatarUrl || "/placeholder.svg"}
                   alt="Profile"
                   className="h-24 w-24 rounded-full object-cover border-2 border-muted"
                 />
-                {isLoading && (
+                {isSaving && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
                     <Icons.spinner className="h-6 w-6 animate-spin text-white" />
                   </div>
                 )}
               </div>
               <div className="flex flex-col gap-2">
-                <Button variant="outline" type="button" onClick={handleAvatarClick} disabled={isLoading}>
+                <Button variant="outline" type="button" onClick={handleAvatarClick} disabled={isSaving}>
                   Change Avatar
                 </Button>
                 <p className="text-sm text-muted-foreground">Max file size: 5MB. Supported formats: JPEG, PNG</p>
@@ -161,19 +217,31 @@ export default function ProfileSettingsPage() {
 
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
+                <Label htmlFor="fullName">Full Name</Label>
                 <Input
-                  id="name"
-                  value={profile.name}
+                  id="fullName"
+                  value={profile.fullName}
                   onChange={(e) => {
-                    setProfile({ ...profile, name: e.target.value })
-                    if (errors.name) setErrors({ ...errors, name: undefined })
+                    setProfile({ ...profile, fullName: e.target.value })
+                    if (errors.fullName) setErrors({ ...errors, fullName: undefined })
                   }}
-                  className={errors.name ? "border-destructive" : ""}
-                  disabled={isLoading}
+                  className={errors.fullName ? "border-destructive" : ""}
+                  disabled={isSaving}
                 />
-                {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
+                {errors.fullName && <p className="text-sm text-destructive">{errors.fullName}</p>}
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="displayName">Display Name</Label>
+                <Input
+                  id="displayName"
+                  value={profile.displayName}
+                  onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
+                  disabled={isSaving}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -185,33 +253,59 @@ export default function ProfileSettingsPage() {
                     if (errors.email) setErrors({ ...errors, email: undefined })
                   }}
                   className={errors.email ? "border-destructive" : ""}
-                  disabled={isLoading}
+                  disabled={true} // Email should not be editable
                 />
                 {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="company">Company</Label>
+                <Input
+                  id="company"
+                  value={profile.company}
+                  onChange={(e) => setProfile({ ...profile, company: e.target.value })}
+                  disabled={isSaving}
+                />
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="bio">Bio</Label>
-              <Textarea
-                id="bio"
-                rows={4}
-                value={profile.bio}
-                onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
-                placeholder="Tell us about yourself..."
-                className="resize-none"
-                disabled={isLoading}
-              />
-              <p className="text-sm text-muted-foreground">Brief description for your profile.</p>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="jobTitle">Job Title</Label>
+                <Input
+                  id="jobTitle"
+                  value={profile.jobTitle}
+                  onChange={(e) => setProfile({ ...profile, jobTitle: e.target.value })}
+                  disabled={isSaving}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="timezone">Timezone</Label>
+                <Select
+                  value={profile.timezone}
+                  onValueChange={(value) => setProfile({ ...profile, timezone: value })}
+                  disabled={isSaving}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select timezone" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {timezones.map((tz) => (
+                      <SelectItem key={tz} value={tz}>
+                        {tz}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
 
           <CardFooter className="flex flex-col-reverse sm:flex-row gap-4 sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => window.history.back()} disabled={isLoading}>
+            <Button type="button" variant="outline" onClick={() => window.history.back()} disabled={isSaving}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? (
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? (
                 <>
                   <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
                   Saving...
@@ -226,4 +320,3 @@ export default function ProfileSettingsPage() {
     </div>
   )
 }
-

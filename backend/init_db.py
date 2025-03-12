@@ -82,6 +82,22 @@ def create_keyspace_and_tables():
             )
         """)
 
+        # Create user_profiles table
+        print("Creating user_profiles table...")
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                email text PRIMARY KEY,
+                full_name text,
+                display_name text,
+                avatar_url text,
+                company text,
+                job_title text,
+                timezone text,
+                preferences map<text, text>,
+                updated_at timestamp
+            )
+        """)
+
         print("Database initialization completed successfully!")
 
     except Exception as e:

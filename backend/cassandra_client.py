@@ -308,3 +308,118 @@ class CassandraClient:
         except Exception as e:
             print(f"Error getting user credentials: {str(e)}")
             return None
+
+    async def get_user_profile(self, email: str) -> Optional[Dict]:
+        """Get user profile information"""
+        try:
+            if not self.session:
+                await self.connect()
+
+            query = """
+            SELECT full_name, display_name, avatar_url, company, 
+                   job_title, timezone, preferences, updated_at
+            FROM user_profiles
+            WHERE email = %s
+            """
+            row = self.session.execute(query, [email]).one()
+            
+            if not row:
+                return None
+
+            return {
+                "email": email,
+                "fullName": row.full_name,
+                "displayName": row.display_name,
+                "avatarUrl": row.avatar_url,
+                "company": row.company,
+                "jobTitle": row.job_title,
+                "timezone": row.timezone,
+                "preferences": row.preferences,
+                "updatedAt": row.updated_at.isoformat() if row.updated_at else None
+            }
+        except Exception as e:
+            print(f"Error getting user profile: {str(e)}")
+            return None
+
+    async def update_user_profile(self, email: str, profile_data: Dict) -> bool:
+        """Update user profile information"""
+        try:
+            if not self.session:
+                await self.connect()
+
+            # Convert from camelCase to snake_case for database
+            update_data = {
+                "full_name": profile_data.get("fullName"),
+                "display_name": profile_data.get("displayName"),
+                "avatar_url": profile_data.get("avatarUrl"),
+                "company": profile_data.get("company"),
+                "job_title": profile_data.get("jobTitle"),
+                "timezone": profile_data.get("timezone"),
+                "preferences": profile_data.get("preferences", {}),
+                "updated_at": datetime.now()
+            }
+
+            # Remove None values
+            update_data = {k: v for k, v in update_data.items() if v is not None}
+
+            # Build dynamic update query
+            fields = ", ".join(f"{k} = %s" for k in update_data.keys())
+            query = f"""
+            UPDATE user_profiles
+            SET {fields}
+            WHERE email = %s
+            """
+
+            # Execute query with values
+            self.session.execute(query, [*update_data.values(), email])
+            return True
+            
+        except Exception as e:
+            print(f"Error updating user profile: {str(e)}")
+            return False
+
+    async def create_user_profile(self, email: str, profile_data: Dict = None) -> bool:
+        """Create initial user profile"""
+        try:
+            if not self.session:
+                await self.connect()
+
+            if profile_data is None:
+                profile_data = {}
+
+            # Set default values for required fields
+            default_profile = {
+                "full_name": profile_data.get("fullName", ""),
+                "display_name": profile_data.get("displayName", email.split("@")[0]),
+                "avatar_url": profile_data.get("avatarUrl", ""),
+                "company": profile_data.get("company", ""),
+                "job_title": profile_data.get("jobTitle", ""),
+                "timezone": profile_data.get("timezone", "UTC"),
+                "preferences": profile_data.get("preferences", {}),
+                "updated_at": datetime.now()
+            }
+
+            query = """
+            INSERT INTO user_profiles (
+                email, full_name, display_name, avatar_url,
+                company, job_title, timezone, preferences, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            self.session.execute(query, [
+                email,
+                default_profile["full_name"],
+                default_profile["display_name"],
+                default_profile["avatar_url"],
+                default_profile["company"],
+                default_profile["job_title"],
+                default_profile["timezone"],
+                default_profile["preferences"],
+                default_profile["updated_at"]
+            ])
+            return True
+
+        except Exception as e:
+            print(f"Error creating user profile: {str(e)}")
+            return False
