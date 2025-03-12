@@ -20,16 +20,18 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
     return user_data
 
-@router.get("/api/users/{user_id}/dashboard")
-async def get_user_dashboard(user_id: str, current_user: Dict = Depends(get_current_user)):
+@router.get("/api/users/{hashed_id}/dashboard")
+async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_current_user)):
     """Get user-specific dashboard data"""
     try:
-        # Verify user has access to this dashboard
-        if user_id != current_user.get("email", "").split("@")[0]:
+        # Get original user ID from email
+        original_user_id = current_user.get("email", "").split("@")[0]
+        # Check if hashed ID matches
+        if hashed_id != cassandra.hash_user_id(original_user_id):
             raise HTTPException(status_code=403, detail="Not authorized to access this dashboard")
 
         # Get user's integrations from database
-        integrations = await cassandra.get_user_integrations(user_id)
+        integrations = await cassandra.get_user_integrations(original_user_id)
         
         # Calculate statistics
         now = datetime.now()
@@ -74,11 +76,14 @@ async def get_user_dashboard(user_id: str, current_user: Dict = Depends(get_curr
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard data: {str(e)}")
 
-@router.post("/api/users/{user_id}/dashboard/refresh")
-async def refresh_dashboard_data(user_id: str, current_user: Dict = Depends(get_current_user)):
+@router.post("/api/users/{hashed_id}/dashboard/refresh")
+async def refresh_dashboard_data(hashed_id: str, current_user: Dict = Depends(get_current_user)):
     """Refresh user's dashboard data"""
     try:
-        if user_id != current_user.get("email", "").split("@")[0]:
+        # Get original user ID from email
+        original_user_id = current_user.get("email", "").split("@")[0]
+        # Check if hashed ID matches
+        if hashed_id != cassandra.hash_user_id(original_user_id):
             raise HTTPException(status_code=403, detail="Not authorized to refresh this dashboard")
             
         # Implement refresh logic here

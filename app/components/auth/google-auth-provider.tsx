@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { GOOGLE_AUTH_URL } from "./google-auth-config"
+import { hashUserId } from "@/app/lib/hash-utils"
 
 interface GoogleAuthContextProps {
   user: {
@@ -47,9 +48,10 @@ export function GoogleAuthProvider({ children }: GoogleAuthProviderProps) {
       localStorage.setItem("googleUser", JSON.stringify(userData))
       localStorage.setItem("authToken", event.data.token)
       
-      // Create a URL-safe user ID from email
-      const userId = encodeURIComponent(userData.email.split('@')[0])
-      router.push(`/dashboard/${userId}`)
+      // Get user ID and hash it for the URL
+      const userId = userData.email.split('@')[0]
+      const hashedId = hashUserId(userId)
+      router.push(`/dashboard/${hashedId}`)
     }
   }, [router])
 

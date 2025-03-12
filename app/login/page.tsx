@@ -11,6 +11,7 @@ import { Label } from "@/app/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { useToast } from "@/app/components/ui/use-toast"
 import { GoogleAuthButton } from "@/app/components/auth/google-auth-button"
+import { hashUserId } from "@/app/lib/hash-utils"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -71,12 +72,17 @@ export default function LoginPage() {
       const returnUrl = localStorage.getItem("returnUrl")
       localStorage.removeItem("returnUrl") // Clean up
 
+      // Get user ID from email and hash it
+      const userId = data.user.email.split('@')[0]
+      const hashedId = hashUserId(userId)
+
       // Force navigation to dashboard with replace to prevent back navigation
-      router.replace(returnUrl || "/dashboard")
+      const dashboardUrl = `/dashboard/${hashedId}`
+      router.replace(returnUrl || dashboardUrl)
       
       // Additional fallback to ensure navigation
       setTimeout(() => {
-        window.location.href = returnUrl || "/dashboard"
+        window.location.href = returnUrl || dashboardUrl
       }, 100)
     } catch (error) {
       toast({

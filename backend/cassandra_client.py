@@ -5,10 +5,15 @@ import os
 from typing import List, Dict, Optional, Any
 import jwt
 import bcrypt
+import hashlib
 from datetime import datetime, timedelta
 
 class CassandraClient:
     JWT_SECRET = os.getenv('JWT_SECRET_KEY', 'your-jwt-secret-key')
+    
+    def hash_user_id(self, user_id: str) -> str:
+        """Create a hash of the user ID for URL safety"""
+        return hashlib.sha256(user_id.encode()).hexdigest()[:12]
     JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
     ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv('ACCESS_TOKEN_EXPIRE_MINUTES', '30'))
     def __init__(self):
@@ -152,7 +157,7 @@ class CassandraClient:
                 await self.connect()
 
             # Check if user already exists
-            query = "SELECT email FROM users WHERE email = %s"
+            query = "SELECT email FROM users WHERE email = %s ALLOW FILTERING"
             rows = self.session.execute(query, [email])
             if len(list(rows)) > 0:
                 raise ValueError("User already exists")
@@ -184,7 +189,7 @@ class CassandraClient:
                 await self.connect()
 
             # Get user
-            query = "SELECT email, password_hash FROM users WHERE email = %s"
+            query = "SELECT email, password_hash FROM users WHERE email = %s ALLOW FILTERING"
             rows = self.session.execute(query, [email])
             user = next(iter(rows), None)
 
@@ -213,7 +218,7 @@ class CassandraClient:
                 await self.connect()
 
             # Verify user exists
-            query = "SELECT email FROM users WHERE email = %s"
+            query = "SELECT email FROM users WHERE email = %s ALLOW FILTERING"
             rows = self.session.execute(query, [email])
             if not next(iter(rows), None):
                 raise ValueError("User not found")

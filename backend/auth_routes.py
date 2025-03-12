@@ -28,9 +28,9 @@ class PasswordUpdate(BaseModel):
 @router.post("/signup")
 async def signup(user: UserCreate):
     try:
-        user_id = cassandra.create_user(user.email, user.password)
+        user_id = await cassandra.create_user(user.email, user.password)
         # After successful creation, immediately log them in
-        auth_data = cassandra.verify_user(user.email, user.password)
+        auth_data = await cassandra.verify_user(user.email, user.password)
         return {
             "message": "User created successfully",
             "user_id": str(user_id),
@@ -49,7 +49,7 @@ async def signup(user: UserCreate):
 @router.post("/login")
 async def login(user: UserLogin):
     try:
-        auth_data = cassandra.verify_user(user.email, user.password)
+        auth_data = await cassandra.verify_user(user.email, user.password)
         # Include user information in response
         return {
             **auth_data,
@@ -65,7 +65,7 @@ async def login(user: UserLogin):
 @router.post("/forgot-password")
 async def forgot_password(reset_request: PasswordReset):
     try:
-        token = cassandra.create_password_reset_token(reset_request.email)
+        token = await cassandra.create_password_reset_token(reset_request.email)
         # In a real application, you would send this token via email
         return {"message": "Password reset token created", "token": token}
     except ValueError as e:
@@ -76,7 +76,7 @@ async def forgot_password(reset_request: PasswordReset):
 @router.post("/reset-password")
 async def reset_password(password_update: PasswordUpdate):
     try:
-        success = cassandra.reset_password(password_update.token, password_update.new_password)
+        success = await cassandra.reset_password(password_update.token, password_update.new_password)
         return {"message": "Password reset successful"}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
