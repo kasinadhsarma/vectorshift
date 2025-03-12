@@ -66,12 +66,26 @@ export async function uploadProfileImage(file: File): Promise<string> {
 }
 
 // Integration Types
+export interface NotionPage {
+  id: string;
+  title: string;
+  lastEdited: string;
+}
+
+export interface NotionDatabase {
+  id: string;
+  name: string;
+  items: number;
+}
+
 export interface IntegrationStatus {
   isConnected: boolean;
-  lastSync?: string;
   status: 'active' | 'inactive' | 'error';
+  lastSync?: string;
   error?: string;
   credentials?: IntegrationCredentials;
+  pages?: NotionPage[];
+  databases?: NotionDatabase[];
 }
 
 export interface AirtableBase {

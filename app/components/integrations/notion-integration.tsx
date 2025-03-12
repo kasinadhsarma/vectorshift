@@ -1,34 +1,29 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import axios, { AxiosError, AxiosResponse } from "axios"
-import { Button } from "../ui/button"
-import { Loader2 } from "lucide-react"
+import { useState, useEffect } from "react";
+import axios, { AxiosError } from "axios";
+import { Button } from "../ui/button";
+import { Loader2 } from "lucide-react";
+import { getIntegrationStatus } from "@/app/lib/api-client";
 
 interface IntegrationParams {
-    credentials?: Record<string, any>
-    type?: string
+    credentials?: Record<string, any>;
+    type?: string;
 }
 
 interface AuthResponse {
-    url: string
-}
-
-interface CredentialsResponse {
-    access_token: string
-    workspace_id: string
-    [key: string]: any
+    url: string;
 }
 
 interface ErrorResponse {
-    detail: string
+    detail: string;
 }
 
 interface NotionIntegrationProps {
-    user: string
-    org: string
-    integrationParams?: IntegrationParams
-    setIntegrationParams: (params: IntegrationParams) => void
+    user: string;
+    org: string;
+    integrationParams?: IntegrationParams;
+    setIntegrationParams: (params: IntegrationParams) => void;
 }
 
 export const NotionIntegration = ({ 
@@ -37,111 +32,90 @@ export const NotionIntegration = ({
     integrationParams, 
     setIntegrationParams 
 }: NotionIntegrationProps) => {
-    const [isConnected, setIsConnected] = useState(false)
-    const [isConnecting, setIsConnecting] = useState(false)
+    const [isConnected, setIsConnected] = useState(false);
+    const [isConnecting, setIsConnecting] = useState(false);
 
-    // Function to open OAuth in a new window
     const handleConnectClick = async () => {
         if (!user || !org) {
-            alert('Missing user or organization ID');
+            alert("Missing user or organization ID");
             return;
         }
         
         try {
             setIsConnecting(true);
             const response = await axios.post<AuthResponse>(
-                `http://localhost:8000/api/integrations/notion/authorize`,
+                `/api/integrations/notion/authorize`,
                 { userId: user, orgId: org },
-                { headers: { 'Content-Type': 'application/json' } }
+                { headers: { "Content-Type": "application/json" } }
             );
 
             if (!response.data?.url) {
-                throw new Error('Invalid authorization URL');
+                throw new Error("Invalid authorization URL");
             }
 
             const newWindow = window.open(
                 response.data.url,
-                'Notion Authorization',
-                'width=600,height=600,menubar=no,toolbar=no'
+                "Notion Authorization",
+                "width=600,height=600,menubar=no,toolbar=no"
             );
 
             if (!newWindow) {
-                throw new Error('Popup was blocked. Please allow popups and try again.');
+                throw new Error("Popup was blocked. Please allow popups and try again.");
             }
 
-            // Listen for messages from popup
-            const messageHandler = (event: MessageEvent) => {
-                if (event.data.error) {
-                    alert(`Authorization failed: ${event.data.error}`);
-                    setIsConnecting(false);
-                }
-            };
-            window.addEventListener('message', messageHandler);
-
-            // Poll for window close
             const pollTimer = window.setInterval(() => {
                 if (newWindow.closed) {
                     window.clearInterval(pollTimer);
-                    window.removeEventListener('message', messageHandler);
                     handleWindowClosed();
                 }
             }, 200);
-
         } catch (e) {
             setIsConnecting(false);
             const error = e as AxiosError<ErrorResponse>;
-            alert(error.response?.data?.detail || 'Failed to connect to Notion');
+            console.error("Authorization error:", error);
+            alert(error.response?.data?.detail || "Failed to connect to Notion");
         }
-    }
+    };
 
-    // Function to handle logic when the OAuth window closes
     const handleWindowClosed = async () => {
         try {
-            const data = { user_id: user, org_id: org }
-            const response: AxiosResponse<CredentialsResponse> = await axios.post(
-                `http://localhost:8000/api/integrations/notion/credentials`, 
-                data,
-                {
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                }
-            )
-            const credentials = response.data
+            await new Promise(resolve => setTimeout(resolve, 1000));
 
-            if (credentials) {
-                setIsConnected(true)
+            const status = await getIntegrationStatus("notion", user, org);
+            if (status.isConnected) {
+                setIsConnected(true);
                 setIntegrationParams({ 
-                    ...integrationParams, 
-                    credentials: credentials, 
-                    type: 'Notion' 
-                })
+                    credentials: status.credentials,
+                    type: "Notion" 
+                });
+            } else {
+                throw new Error("Failed to connect to Notion");
             }
-            setIsConnecting(false)
         } catch (e) {
-            setIsConnecting(false)
-            const error = e as AxiosError<ErrorResponse>
-            alert(error.response?.data?.detail || 'Failed to get Notion credentials')
+            setIsConnecting(false);
+            const error = e as AxiosError<ErrorResponse>;
+            console.error("Connection error:", error);
+            alert(error.response?.data?.detail || "Failed to connect to Notion");
         }
-    }
+    };
 
     useEffect(() => {
-        setIsConnected(!!integrationParams?.credentials)
-    }, [integrationParams])
+        setIsConnected(!!integrationParams?.credentials);
+    }, [integrationParams]);
 
     return (
         <div className="mt-4">
-            <h3 className="mb-4">Parameters</h3>
+            <h3 className="mb-4">Integration Status</h3>
             <div className="flex items-center justify-center">
                 <Button
                     variant={isConnected ? "outline" : "default"}
-                    onClick={isConnected ? () => {} : handleConnectClick}
+                    onClick={isConnected ? undefined : handleConnectClick}
                     disabled={isConnecting}
                     className={isConnected ? "cursor-default opacity-100" : ""}
                 >
-                    {isConnected ? 'Notion Connected' : isConnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Connect to Notion'}
+                    {isConnected ? "Notion Connected" : isConnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Connect to Notion"}
                 </Button>
             </div>
         </div>
-    )
-}
+    );
+};
