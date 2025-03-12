@@ -171,11 +171,13 @@ async def get_integration_status(
     """Get integration status and workspace info"""
     try:
         provider_funcs = get_provider_functions(provider)
+        credentials = await provider_funcs["get_credentials"](user_id, current_user["id"])
+        items = await provider_funcs["get_items"](credentials)
         return {
             "isConnected": True,
             "status": "active",
             "lastSync": "2025-03-12T12:00:00Z",
-            "workspace": provider_funcs["mock_data"]
+            "workspace": items
         }
     except Exception as e:
         return {
@@ -192,7 +194,15 @@ async def sync_integration(
 ):
     """Sync integration data"""
     try:
-        return await get_integration_status(provider, user_id)
+        provider_funcs = get_provider_functions(provider)
+        credentials = await provider_funcs["get_credentials"](user_id, current_user["id"])
+        items = await provider_funcs["get_items"](credentials)
+        return {
+            "isConnected": True,
+            "status": "active",
+            "lastSync": "2025-03-12T12:00:00Z",
+            "workspace": items
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
