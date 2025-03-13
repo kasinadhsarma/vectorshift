@@ -80,6 +80,11 @@ async def oauth2callback_slack(request: Request):
                 
             # Check for Slack API errors
             if not response_data.get('ok', False):
+                if response_data.get('error') == 'invalid_scope':
+                    raise HTTPException(
+                        status_code=400,
+                        detail='Invalid scope provided for Slack authorization'
+                    )
                 raise HTTPException(
                     status_code=400,
                     detail=f"Slack error: {response_data.get('error', 'Unknown error')}"

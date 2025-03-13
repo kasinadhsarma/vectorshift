@@ -29,7 +29,6 @@ export async function POST(request: Request) {
     return NextResponse.json(data)
   } catch (error) {
     console.error("Error in HubSpot authorize:", error)
-    console.error("Error in HubSpot authorize:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to authorize HubSpot integration";
     return NextResponse.json({ detail: errorMessage }, { status: 500 });
   }

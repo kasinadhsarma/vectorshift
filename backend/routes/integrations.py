@@ -151,6 +151,10 @@ async def authorize_slack(request: AuthorizeRequest):
     try:
         auth_url = await slack.authorize_slack(request.userId, request.orgId)
         return {"auth_url": auth_url}
+    except HTTPException as e:
+        if e.status_code == 400 and "invalid_scope" in e.detail:
+            return {"detail": "Invalid scope provided for Slack authorization"}, 400
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -158,6 +162,10 @@ async def authorize_slack(request: AuthorizeRequest):
 async def slack_callback(request: Request):
     try:
         return await slack.oauth2callback_slack(request)
+    except HTTPException as e:
+        if e.status_code == 400 and "invalid_scope" in e.detail:
+            return {"detail": "Invalid scope provided for Slack authorization"}, 400
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -170,6 +178,10 @@ async def get_slack_status(user_id: str = Query(..., alias="userId"), org_id: st
             "status": "active" if credentials else "inactive",
             "credentials": credentials
         }
+    except HTTPException as e:
+        if e.status_code == 400 and "invalid_scope" in e.detail:
+            return {"detail": "Invalid scope provided for Slack authorization"}, 400
+        raise e
     except Exception as e:
         if isinstance(e, HTTPException) and e.status_code == 404:
             return {
