@@ -26,4 +26,4 @@ typescript
 *.tsbuildinfo
 next-env.d.ts
 
-venv/
+venv/backend/server.log
