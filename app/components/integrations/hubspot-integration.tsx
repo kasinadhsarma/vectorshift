@@ -108,10 +108,25 @@ export const HubspotIntegration = ({ userId, orgId }: HubSpotIntegrationProps) =
         throw new Error("Popup was blocked. Please allow popups and try again.")
       }
 
+      // Listen for message from popup
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data.type === "HUBSPOT_AUTH_SUCCESS") {
+          window.removeEventListener("message", messageHandler)
+          handleAuthSuccess()
+        } else if (event.data.type === "HUBSPOT_AUTH_ERROR") {
+          window.removeEventListener("message", messageHandler)
+          handleAuthError(event.data.error)
+        }
+      }
+
+      window.addEventListener("message", messageHandler)
+
+      // Also poll for window close in case message isn't received
       const pollTimer = window.setInterval(() => {
         if (newWindow.closed) {
           window.clearInterval(pollTimer)
-          handleWindowClosed()
+          window.removeEventListener("message", messageHandler)
+          handleAuthSuccess() // Assume success if window closed normally
         }
       }, 200)
     } catch (e) {
@@ -122,26 +137,29 @@ export const HubspotIntegration = ({ userId, orgId }: HubSpotIntegrationProps) =
     }
   }
 
-  const handleWindowClosed = async () => {
+  const handleAuthSuccess = async () => {
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
+      // Verify the connection immediately
       const status = await getIntegrationStatus("hubspot", userId, orgId)
       if (status.isConnected) {
         setIsConnected(true)
         setCredentials(status.credentials)
-        fetchHubSpotData(status.credentials)
+        await fetchHubSpotData(status.credentials)
       } else {
-        throw new Error("Failed to connect to HubSpot")
+        throw new Error("Connection verification failed")
       }
-    } catch (e) {
-      setIsConnecting(false)
-      const error = e as AxiosError<ErrorResponse>
-      console.error("Connection error:", error)
-      alert(error.response?.data?.detail || "Failed to connect to HubSpot")
+    } catch (error) {
+      console.error("Error verifying connection:", error)
+      handleAuthError(error instanceof Error ? error.message : "Failed to verify connection")
     } finally {
       setIsConnecting(false)
     }
+  }
+
+  const handleAuthError = (error: string) => {
+    console.error("Authentication error:", error)
+    alert(`Failed to connect to HubSpot: ${error}`)
+    setIsConnecting(false)
   }
 
   const fetchHubSpotData = async (creds?: any) => {
@@ -296,4 +314,3 @@ export const HubspotIntegration = ({ userId, orgId }: HubSpotIntegrationProps) =
     </div>
   )
 }
-

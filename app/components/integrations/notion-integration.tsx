@@ -97,10 +97,25 @@ export const NotionIntegration = ({ user, org, integrationParams, setIntegration
         throw new Error("Popup was blocked. Please allow popups and try again.")
       }
 
+      // Listen for message from popup
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data.type === "NOTION_AUTH_SUCCESS") {
+          window.removeEventListener("message", messageHandler)
+          handleAuthSuccess()
+        } else if (event.data.type === "NOTION_AUTH_ERROR") {
+          window.removeEventListener("message", messageHandler)
+          handleAuthError(event.data.error)
+        }
+      }
+
+      window.addEventListener("message", messageHandler)
+
+      // Also poll for window close in case message isn't received
       const pollTimer = window.setInterval(() => {
         if (newWindow.closed) {
           window.clearInterval(pollTimer)
-          handleWindowClosed()
+          window.removeEventListener("message", messageHandler)
+          handleAuthSuccess() // Assume success if window closed normally
         }
       }, 200)
     } catch (e) {
@@ -133,48 +148,32 @@ export const NotionIntegration = ({ user, org, integrationParams, setIntegration
     }
   }
 
-  const handleWindowClosed = async () => {
+  const handleAuthSuccess = async () => {
     try {
-      // Give backend time to process the token exchange
-      await new Promise((resolve) => setTimeout(resolve, 3000))
-
-      let retries = 3
-      while (retries > 0) {
-        try {
-          const status = await getIntegrationStatus("notion", user, org)
-          if (status.isConnected) {
-            setIsConnected(true)
-            setIntegrationParams({
-              credentials: status.credentials,
-              type: "Notion",
-            })
-            fetchNotionData(status.credentials)
-            return
-          }
-          retries--
-          if (retries > 0) {
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-          }
-        } catch (error) {
-          console.error("Error checking status:", error)
-          retries--
-          if (retries > 0) {
-            await new Promise((resolve) => setTimeout(resolve, 1000))
-          }
-        }
-      }
-      throw new Error("Failed to verify Notion connection after multiple attempts")
-    } catch (e) {
-      const error = e as Error | AxiosError<ErrorResponse>
-      console.error("Connection error:", error)
-      if (axios.isAxiosError(error)) {
-        alert(error.response?.data?.detail || "Failed to connect to Notion")
+      // Verify the connection immediately
+      const status = await getIntegrationStatus("notion", user, org)
+      if (status.isConnected) {
+        setIsConnected(true)
+        setIntegrationParams({
+          credentials: status.credentials,
+          type: "Notion",
+        })
+        await fetchNotionData(status.credentials)
       } else {
-        alert(error.message || "Failed to connect to Notion")
+        throw new Error("Connection verification failed")
       }
+    } catch (error) {
+      console.error("Error verifying connection:", error)
+      handleAuthError(error instanceof Error ? error.message : "Failed to verify connection")
     } finally {
       setIsConnecting(false)
     }
+  }
+
+  const handleAuthError = (error: string) => {
+    console.error("Authentication error:", error)
+    alert(`Failed to connect to Notion: ${error}`)
+    setIsConnecting(false)
   }
 
   const fetchNotionData = async (credentials?: any) => {

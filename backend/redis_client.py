@@ -1,51 +1,34 @@
-import os
+"""Redis client module for handling credentials and state storage."""
 import json
-from typing import Optional, Any
-from redis.asyncio import Redis
-from dotenv import load_dotenv
+from redis import asyncio as aioredis
+import os
 
-load_dotenv()
-
-REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
-REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
-REDIS_DB = int(os.getenv('REDIS_DB', '0'))
-
-# Create Redis client
-redis = Redis(
-    host=REDIS_HOST,
-    port=REDIS_PORT,
-    db=REDIS_DB,
+redis = aioredis.Redis(
+    host=os.getenv('REDIS_HOST', 'localhost'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    db=0,
     decode_responses=True
 )
 
-async def add_key_value_redis(key: str, value: Any, expire: int = None) -> bool:
-    """Store a key-value pair in Redis with optional expiration"""
+async def add_key_value_redis(key: str, value: str, expire: int = 3600) -> bool:
+    """Add a key-value pair to Redis with expiration."""
     try:
-        value_str = json.dumps(value) if not isinstance(value, str) else value
-        await redis.set(key, value_str)
-        if expire:
-            await redis.expire(key, expire)
+        await redis.set(key, value, ex=expire)
         return True
     except Exception as e:
         print(f"Error adding to Redis: {str(e)}")
         return False
 
-async def get_value_redis(key: str) -> Optional[Any]:
-    """Get value from Redis by key"""
+async def get_value_redis(key: str) -> str | None:
+    """Get a value from Redis by key."""
     try:
-        value = await redis.get(key)
-        if value:
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError:
-                return value
-        return None
+        return await redis.get(key)
     except Exception as e:
         print(f"Error getting from Redis: {str(e)}")
         return None
 
 async def delete_key_redis(key: str) -> bool:
-    """Delete a key from Redis"""
+    """Delete a key from Redis."""
     try:
         await redis.delete(key)
         return True
@@ -53,17 +36,37 @@ async def delete_key_redis(key: str) -> bool:
         print(f"Error deleting from Redis: {str(e)}")
         return False
 
-async def store_user_token(token: str, user_data: dict, expire: int = 3600) -> bool:
-    """Store user token and data in Redis"""
-    key = f"user_token:{token}"
+async def get_credentials(service: str, user_id: str, org_id: str) -> dict:
+    """Get standardized credentials response."""
     try:
-        await add_key_value_redis(key, user_data, expire)
-        return True
+        raw_credentials = await get_value_redis(f'{service}_credentials:{org_id}:{user_id}')
+        if not raw_credentials:
+            return {
+                'isConnected': False,
+                'status': 'inactive',
+                'credentials': None
+            }
+        
+        try:
+            credentials_data = json.loads(raw_credentials)
+            await delete_key_redis(f'{service}_credentials:{org_id}:{user_id}')
+            
+            return {
+                'isConnected': True,
+                'status': 'active',
+                'credentials': credentials_data
+            }
+        except json.JSONDecodeError:
+            return {
+                'isConnected': False,
+                'status': 'error',
+                'credentials': None,
+                'error': 'Invalid credentials format'
+            }
     except Exception as e:
-        print(f"Error storing user token: {str(e)}")
-        return False
-
-async def get_user_by_token(token: str) -> Optional[dict]:
-    """Get user data by token"""
-    key = f"user_token:{token}"
-    return await get_value_redis(key)
+        return {
+            'isConnected': False,
+            'status': 'error',
+            'credentials': None,
+            'error': str(e)
+        }

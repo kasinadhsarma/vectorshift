@@ -102,17 +102,21 @@ export const SlackIntegration = ({ userId, orgId }: SlackIntegrationProps) => {
       const messageHandler = (event: MessageEvent) => {
         if (event.data.type === "SLACK_AUTH_SUCCESS") {
           window.removeEventListener("message", messageHandler)
-          handleWindowClosed()
+          handleAuthSuccess(event.data.org_id, event.data.user_id)
+        } else if (event.data.type === "SLACK_AUTH_ERROR") {
+          window.removeEventListener("message", messageHandler)
+          handleAuthError(event.data.error)
         }
       }
 
       window.addEventListener("message", messageHandler)
 
+      // Also poll for window close in case message isn't received
       const pollTimer = window.setInterval(() => {
         if (newWindow.closed) {
           window.clearInterval(pollTimer)
           window.removeEventListener("message", messageHandler)
-          handleWindowClosed()
+          handleAuthSuccess(orgId, userId) // Assume success if window closed normally
         }
       }, 200)
     } catch (e) {
@@ -123,25 +127,29 @@ export const SlackIntegration = ({ userId, orgId }: SlackIntegrationProps) => {
     }
   }
 
-  const handleWindowClosed = async () => {
+  const handleAuthSuccess = async (org_id: string, user_id: string) => {
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      const status = await getIntegrationStatus("slack", userId, orgId)
+      // Verify the connection immediately
+      const status = await getIntegrationStatus("slack", user_id, org_id)
       if (status.isConnected) {
         setIsConnected(true)
         setCredentials(status.credentials)
-        fetchSlackData(status.credentials)
+        await fetchSlackData(status.credentials)
       } else {
-        throw new Error("Failed to connect to Slack")
+        throw new Error("Connection verification failed")
       }
-    } catch (e) {
-      const error = e as AxiosError<ErrorResponse>
-      console.error("Connection error:", error)
-      alert(error.response?.data?.detail || "Failed to connect to Slack")
+    } catch (error) {
+      console.error("Error verifying connection:", error)
+      handleAuthError(error instanceof Error ? error.message : "Failed to verify connection")
     } finally {
       setIsConnecting(false)
     }
+  }
+
+  const handleAuthError = (error: string) => {
+    console.error("Authentication error:", error)
+    alert(`Failed to connect to Slack: ${error}`)
+    setIsConnecting(false)
   }
 
   const fetchSlackData = async (creds?: any) => {
@@ -236,4 +244,3 @@ export const SlackIntegration = ({ userId, orgId }: SlackIntegrationProps) => {
     </div>
   )
 }
-

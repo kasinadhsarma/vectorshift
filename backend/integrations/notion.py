@@ -217,62 +217,122 @@ async def oauth2callback_notion(request: Request):
         print(error_details)
         raise HTTPException(status_code=500, detail=error_details)
 
-async def get_notion_credentials(user_id: str, org_id: str = None):
-    """Retrieve stored Notion credentials"""
-    redis_key = f'notion_credentials:{user_id}'
-    if org_id:
-        redis_key = f'notion_credentials:{org_id}:{user_id}'
-    credentials = await get_value_redis(redis_key)
-    if not credentials:
-        return None
-    return json.loads(credentials)
+async def get_notion_credentials(user_id: str, org_id: str = None) -> dict:
+    """Get Notion credentials using the standardized credentials function."""
+    from redis_client import get_credentials
+    return await get_credentials('notion', user_id, org_id or user_id)
 
 async def get_items_notion(credentials: dict) -> dict:
-    """Retrieve Notion databases and pages"""
-    # Ensure credentials is a dict, whether it comes as JSON string or dict
+    """Retrieve Notion databases and pages with enhanced error handling"""
+    # Ensure credentials is a dict
     if isinstance(credentials, str):
         try:
             credentials = json.loads(credentials)
         except json.JSONDecodeError:
             raise HTTPException(status_code=400, detail='Invalid credentials format')
+    
     access_token = credentials.get('access_token')
     if not access_token:
         raise HTTPException(status_code=400, detail='Invalid credentials')
     
-    headers = {'Authorization': f'Bearer {access_token}', 'Notion-Version': NOTION_VERSION}
-    async with httpx.AsyncClient() as client:
-        responses = await asyncio.gather(
-            client.get('https://api.notion.com/v1/users/me', headers=headers),
-            client.post('https://api.notion.com/v1/search', headers=headers, json={'filter': {'property': 'object', 'value': 'database'}}),
-            client.post('https://api.notion.com/v1/search', headers=headers, json={'filter': {'property': 'object', 'value': 'page'}}),
-        )
-    
-    if any(response.status_code != 200 for response in responses):
-        raise HTTPException(status_code=500, detail='Failed to fetch Notion data')
-    
-    user_response, db_response, page_response = responses
-    
-    databases = [
-        {
-            'id': db['id'],
-            'name': db.get('title', [{}])[0].get('text', {}).get('content', 'Untitled'),
-            'items': len(db.get('properties', {})),
-        } for db in db_response.json().get('results', [])
-    ]
-    
-    pages = [
-        {
-            'id': page['id'],
-            'title': page.get('properties', {}).get('title', {}).get('title', [{}])[0].get('text', {}).get('content', 'Untitled'),
-            'lastEdited': page.get('last_edited_time'),
-        } for page in page_response.json().get('results', [])
-    ]
-    
-    return {
-        'isConnected': True,
-        'status': 'active',
-        'lastSync': user_response.json().get('bot', {}).get('last_seen'),
-        'databases': databases,
-        'pages': pages,
-        'credentials': credentials,
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Notion-Version': NOTION_VERSION,
+        'Content-Type': 'application/json'
     }
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            # Make parallel requests with enhanced error handling
+            responses = await asyncio.gather(
+                client.get('https://api.notion.com/v1/users/me', headers=headers),
+                client.post(
+                    'https://api.notion.com/v1/search',
+                    headers=headers,
+                    json={'filter': {'property': 'object', 'value': 'database'}, 'page_size': 20}
+                ),
+                client.post(
+                    'https://api.notion.com/v1/search',
+                    headers=headers,
+                    json={'filter': {'property': 'object', 'value': 'page'}, 'page_size': 20}
+                )
+            )
+            
+            user_response, db_response, page_response = responses
+            
+            # Check each response for errors
+            for resp in responses:
+                if resp.status_code != 200:
+                    error_msg = f'Notion API error: {resp.text}'
+                    raise HTTPException(status_code=resp.status_code, detail=error_msg)
+                
+                try:
+                    resp_data = resp.json()
+                    if resp_data.get('object') == 'error':
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Notion error: {resp_data.get('message', 'Unknown error')}"
+                        )
+                except json.JSONDecodeError:
+                    raise HTTPException(status_code=500, detail='Invalid JSON response from Notion')
+    
+            # Process user data
+            user_data = user_response.json()
+            user_info = {
+                'id': user_data.get('id'),
+                'name': user_data.get('name'),
+                'avatar_url': user_data.get('avatar_url'),
+                'type': user_data.get('type', 'unknown')
+            }
+            
+            # Process databases with enhanced metadata
+            databases = [
+                {
+                    'id': db['id'],
+                    'name': db.get('title', [{}])[0].get('text', {}).get('content', 'Untitled'),
+                    'created_time': db.get('created_time'),
+                    'last_edited_time': db.get('last_edited_time'),
+                    'items': len(db.get('properties', {})),
+                    'url': db.get('url'),
+                    'icon': db.get('icon'),
+                    'cover': db.get('cover')
+                } for db in db_response.json().get('results', [])
+            ]
+            
+            # Process pages with enhanced metadata
+            pages = [
+                {
+                    'id': page['id'],
+                    'title': page.get('properties', {}).get('title', {}).get('title', [{}])[0].get('text', {}).get('content', 'Untitled'),
+                    'created_time': page.get('created_time'),
+                    'last_edited_time': page.get('last_edited_time'),
+                    'url': page.get('url'),
+                    'icon': page.get('icon'),
+                    'cover': page.get('cover'),
+                    'parent': {
+                        'type': page.get('parent', {}).get('type'),
+                        'id': page.get('parent', {}).get('database_id') or page.get('parent', {}).get('page_id')
+                    }
+                } for page in page_response.json().get('results', [])
+            ]
+            
+            return {
+                'isConnected': True,
+                'status': 'active',
+                'user': user_info,
+                'lastSync': user_data.get('bot', {}).get('last_seen'),
+                'databases': databases,
+                'pages': pages,
+                'credentials': credentials
+            }
+            
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f'Failed to connect to Notion API: {str(e)}'
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f'Error fetching Notion data: {str(e)}'
+            )
