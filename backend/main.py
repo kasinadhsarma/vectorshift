@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers.integrations import router as integrations_router
+from backend.integrations.google_auth import google_auth_url
 
 app = FastAPI()
 
@@ -16,6 +17,11 @@ app.add_middleware(
 
 # Include routers
 app.include_router(integrations_router)
+
+@app.get("/auth/google/url")
+async def get_google_auth_url():
+    """Endpoint to get Google auth URL."""
+    return {"url": await google_auth_url()}
 
 @app.get("/health")
 async def health_check():
