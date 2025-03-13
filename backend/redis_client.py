@@ -36,6 +36,16 @@ async def delete_key_redis(key: str) -> bool:
         print(f"Error deleting from Redis: {str(e)}")
         return False
 
+async def store_user_token(user_id: str, token_data: dict, expire: int = 3600) -> bool:
+    """Store user token data in Redis."""
+    try:
+        token_key = f'user_token:{user_id}'
+        await redis.set(token_key, json.dumps(token_data), ex=expire)
+        return True
+    except Exception as e:
+        print(f"Error storing user token: {str(e)}")
+        return False
+
 async def get_credentials(service: str, user_id: str, org_id: str) -> dict:
     """Get standardized credentials response."""
     try:
