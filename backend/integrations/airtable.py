@@ -20,10 +20,20 @@ API_URL = 'https://api.airtable.com/v0/meta'
 
 async def authorize_airtable(user_id, org_id):
     state = secrets.token_urlsafe(32)
+    code_verifier = secrets.token_urlsafe(32)
+    
+    # Generate code challenge using the verifier
+    import base64
+    import hashlib
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode('utf-8')).digest()
+    ).decode('utf-8').rstrip('=')
+    
     state_data = {
         'state': state,
         'user_id': user_id,
-        'org_id': org_id
+        'org_id': org_id,
+        'code_verifier': code_verifier
     }
     encoded_state = json.dumps(state_data)
     await add_key_value_redis(f'airtable_state:{org_id}:{user_id}', encoded_state, expire=600)
@@ -42,6 +52,8 @@ async def authorize_airtable(user_id, org_id):
         f'&response_type=code'
         f'&state={state}'
         f'&scope={" ".join(scopes)}'
+        f'&code_challenge={code_challenge}'
+        f'&code_challenge_method=S256'
     )
     return auth_url
 
@@ -55,13 +67,22 @@ async def oauth2callback_airtable(request: Request):
     code = request.query_params.get('code')
     state = request.query_params.get('state')
     
+    # First get the saved state by state parameter
+    saved_state = await get_value_redis(f'airtable_state:{state}')
+    if not saved_state:
+        raise HTTPException(status_code=400, detail='State not found')
+        
     try:
-        state_data = json.loads(state)
-    except (json.JSONDecodeError, TypeError):
-        raise HTTPException(status_code=400, detail='Invalid state parameter')
-
-    user_id = state_data.get('user_id')
-    org_id = state_data.get('org_id')
+        state_data = json.loads(saved_state)
+        user_id = state_data.get('user_id')
+        org_id = state_data.get('org_id')
+        code_verifier = state_data.get('code_verifier')
+        
+        if not all([user_id, org_id, code_verifier]):
+            raise HTTPException(status_code=400, detail='Missing required state data')
+            
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail='Invalid state data format')
 
     saved_state = await get_value_redis(f'airtable_state:{org_id}:{user_id}')
     if not saved_state or state != json.loads(saved_state).get('state'):
@@ -76,7 +97,8 @@ async def oauth2callback_airtable(request: Request):
                     'code': code,
                     'redirect_uri': REDIRECT_URI,
                     'client_id': CLIENT_ID,
-                    'client_secret': CLIENT_SECRET
+                    'client_secret': CLIENT_SECRET,
+                    'code_verifier': code_verifier
                 }
             ),
             delete_key_redis(f'airtable_state:{org_id}:{user_id}')
@@ -159,4 +181,3 @@ async def get_items_airtable(credentials) -> list[IntegrationItem]:
             items.append(table_item)
 
     return items
-

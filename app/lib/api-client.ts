@@ -1,227 +1,98 @@
-// API Client for profile and integration operations
+import axios from "axios"
 
-interface ProfileData {
-  email: string;
-  fullName: string;
-  displayName: string;
-  avatarUrl: string;
-  company: string;
-  jobTitle: string;
-  timezone: string;
-  preferences: Record<string, string>;
-  updatedAt?: string;
-}
-
-export async function getUserProfile(email: string): Promise<ProfileData> {
-  const response = await fetch(`/api/users/${email}/profile`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch profile');
-  }
-
-  return response.json();
-}
-
-export async function updateUserProfile(email: string, data: Partial<ProfileData>): Promise<ProfileData> {
-  const response = await fetch(`/api/users/${email}/profile`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to update profile');
-  }
-
-  return response.json();
-}
-
-export async function uploadProfileImage(file: File): Promise<string> {
-  // Create FormData
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to upload image');
-  }
-
-  const data = await response.json();
-  return data.url;
-}
-
-// Integration Types
-export interface NotionPage {
-  id: string;
-  title: string;
-  lastEdited: string;
-}
-
-export interface NotionDatabase {
-  id: string;
-  name: string;
-  items: number;
-}
-
+// Define types
 export interface IntegrationStatus {
-  isConnected: boolean;
-  status: 'active' | 'inactive' | 'error';
-  lastSync?: string;
-  error?: string;
-  credentials?: IntegrationCredentials;
-  pages?: NotionPage[];
-  databases?: NotionDatabase[];
+  isConnected: boolean
+  status: "active" | "inactive" | "error"
+  lastSync?: string
+  error?: string
+  credentials?: any
+  workspace?: any
 }
 
-export interface AirtableBase {
-  id: string;
-  name: string;
-  last_modified_time: string;
-  type: 'base';
-  url?: string;
-}
-
-export interface HubSpotContact {
-  id: string;
-  name: string;
-  email?: string;
-  company?: string;
-  last_modified_time: string;
-  type: 'contact';
-}
-
-export interface SlackChannel {
-  id: string;
-  name: string;
-  visibility: boolean;
-  creation_time?: string;
-  type: 'channel';
-}
-
-interface IntegrationCredentials {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt?: string;
-  workspaceId?: string;
-  [key: string]: any;
-}
-
-// Integration API Methods
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:8000/api';
-
-export async function authorizeIntegration(provider: string, userId: string, orgId: string): Promise<string> {
-  const response = await axios.post(`${API_BASE_URL}/integrations/${provider}/authorize`, {
-    userId,
-    orgId
-  });
-  return response.data.url;
-}
-
-export async function getIntegrationStatus(provider: string, userId: string, orgId?: string): Promise<IntegrationStatus> {
-  const response = await axios.get(`${API_BASE_URL}/integrations/${provider}/status`, {
-    params: { user_id: userId, org_id: orgId }
-  });
-  return response.data;
-}
-
-export async function disconnectIntegration(provider: string, userId: string, orgId?: string): Promise<void> {
-  await axios.post(`${API_BASE_URL}/integrations/${provider}/disconnect`, {
-    user_id: userId,
-    org_id: orgId
-  });
-}
-
-export async function syncIntegrationData(provider: string, userId: string, orgId?: string): Promise<void> {
-  await axios.post(`${API_BASE_URL}/integrations/${provider}/sync`, {
-    user_id: userId,
-    org_id: orgId
-  });
-}
-
-// Integration-specific methods
-export async function getNotionPages(workspaceId: string): Promise<any[]> {
-  const response = await fetch(`/api/integrations/notion/pages?workspaceId=${workspaceId}`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch Notion pages');
+// Get integration status
+export async function getIntegrationStatus(
+  integrationType: string,
+  userId: string,
+  orgId?: string,
+): Promise<IntegrationStatus> {
+  try {
+    const response = await axios.get(`/api/integrations/${integrationType}/status`, {
+      params: { userId, orgId },
+    })
+    return response.data
+  } catch (error) {
+    console.error(`Error getting ${integrationType} status:`, error)
+    return {
+      isConnected: false,
+      status: "error",
+      error: "Failed to get integration status",
+    }
   }
-
-  return response.json();
 }
 
-export async function getAirtableBases(workspaceId: string): Promise<AirtableBase[]> {
-  const response = await fetch(`/api/integrations/airtable/bases?workspaceId=${workspaceId}`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch Airtable bases');
+// Sync integration data
+export async function syncIntegrationData(integrationType: string, userId: string, orgId?: string): Promise<any> {
+  try {
+    const response = await axios.post(`/api/integrations/${integrationType}/sync`, {
+      userId,
+      orgId,
+    })
+    return response.data
+  } catch (error) {
+    console.error(`Error syncing ${integrationType} data:`, error)
+    throw new Error("Failed to sync integration data")
   }
-
-  return response.json();
 }
 
-export async function getAirtableRecords(baseId: string, tableId: string): Promise<any[]> {
-  const response = await fetch(`/api/integrations/airtable/records?baseId=${baseId}&tableId=${tableId}`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch Airtable records');
+// Authorize integration
+export async function authorizeIntegration(
+  integrationType: string,
+  userId: string,
+  orgId?: string,
+): Promise<{ url: string }> {
+  try {
+    const response = await axios.post(`/api/integrations/${integrationType}/authorize`, {
+      userId,
+      orgId,
+    })
+    return response.data
+  } catch (error) {
+    console.error(`Error authorizing ${integrationType}:`, error)
+    throw new Error("Failed to authorize integration")
   }
-
-  return response.json();
 }
 
-export async function getSlackChannels(workspaceId: string): Promise<SlackChannel[]> {
-  const response = await fetch(`/api/integrations/slack/channels?workspaceId=${workspaceId}`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch Slack channels');
+// Disconnect integration
+export async function disconnectIntegration(integrationType: string, userId: string, orgId?: string): Promise<any> {
+  try {
+    const response = await axios.post(`/api/integrations/${integrationType}/disconnect`, {
+      userId,
+      orgId,
+    })
+    return response.data
+  } catch (error) {
+    console.error(`Error disconnecting ${integrationType}:`, error)
+    throw new Error("Failed to disconnect integration")
   }
-
-  return response.json();
 }
 
-export async function getHubspotContacts(workspaceId: string): Promise<HubSpotContact[]> {
-  const response = await fetch(`/api/integrations/hubspot/contacts?workspaceId=${workspaceId}`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`,
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch HubSpot contacts');
+// Get integration data
+export async function getIntegrationData(
+  integrationType: string,
+  credentials: any,
+  userId: string,
+  orgId?: string,
+): Promise<any> {
+  try {
+    const response = await axios.post(`/api/integrations/${integrationType}/data`, {
+      credentials,
+      userId,
+      orgId,
+    })
+    return response.data
+  } catch (error) {
+    console.error(`Error getting ${integrationType} data:`, error)
+    throw new Error(`Failed to get ${integrationType} data`)
   }
-
-  return response.json();
 }

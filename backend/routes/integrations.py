@@ -1,184 +1,187 @@
-from fastapi import Request, APIRouter, HTTPException, Depends
-from fastapi.security import HTTPBearer
-from typing import Dict, Callable, Any
-from cassandra_client import CassandraClient
-from integrations.notion import (
-    authorize_notion, oauth2callback_notion,
-    get_notion_credentials, get_items_notion
-)
-from integrations.airtable import (
-    authorize_airtable, oauth2callback_airtable,
-    get_airtable_credentials, get_items_airtable
-)
-from integrations.slack import (
-    authorize_slack, oauth2callback_slack,
-    get_slack_credentials, get_items_slack
-)
-from integrations.hubspot import (
-    authorize_hubspot, oauth2callback_hubspot,
-    get_hubspot_credentials, get_items_hubspot
-)
-from redis_client import get_value_redis, delete_key_redis
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from typing import Dict, Optional, List
+from pydantic import BaseModel
+from integrations import notion, airtable, hubspot, slack
 
-router = APIRouter()
-security = HTTPBearer()
-cassandra = CassandraClient()
+router = APIRouter(prefix="/integrations")
 
-# Provider mapping for OAuth integrations
-PROVIDER_MAP = {
-    "notion": {
-        "authorize": authorize_notion,
-        "oauth2callback": oauth2callback_notion,
-        "get_credentials": get_notion_credentials,
-        "get_items": get_items_notion,
-    },
-    "airtable": {
-        "authorize": authorize_airtable,
-        "oauth2callback": oauth2callback_airtable,
-        "get_credentials": get_airtable_credentials,
-        "get_items": get_items_airtable,
-    },
-    "slack": {
-        "authorize": authorize_slack,
-        "oauth2callback": oauth2callback_slack,
-        "get_credentials": get_slack_credentials,
-        "get_items": get_items_slack,
-    },
-    "hubspot": {
-        "authorize": authorize_hubspot,
-        "oauth2callback": oauth2callback_hubspot,
-        "get_credentials": get_hubspot_credentials,
-        "get_items": get_items_hubspot,
-    }
-}
+class AuthorizeRequest(BaseModel):
+    userId: str
+    orgId: Optional[str] = None
 
-async def get_current_user(token: str = Depends(security)):
-    """Mock authentication for development."""
-    return {"id": "mock_user"}
+    class Config:
+        populate_by_name = True
+        alias_generator = lambda string: string.replace('Id', '_id')
 
-def get_provider_functions(provider: str) -> Dict[str, Callable]:
-    """Retrieve provider-specific OAuth functions."""
-    if provider not in PROVIDER_MAP:
-        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
-    return PROVIDER_MAP[provider]
+class DataRequest(BaseModel):
+    credentials: Dict
+    userId: str
+    orgId: Optional[str] = None
 
-@router.post("/integrations/{provider}/authorize")
-async def authorize_integration(provider: str, request: Request):
-    """Generate OAuth authorization URL for the provider."""
+    class Config:
+        populate_by_name = True
+        alias_generator = lambda string: string.replace('Id', '_id')
+
+# Notion routes
+@router.post("/notion/authorize")
+async def authorize_notion(request: AuthorizeRequest):
     try:
-        provider_funcs = get_provider_functions(provider)
-        
-        # Handle both JSON and form data
-        content_type = request.headers.get('content-type', '')
-        if 'application/json' in content_type:
-            body = await request.json()
-            user_id = body.get('userId')
-            org_id = body.get('orgId')
-        else:
-            form = await request.form()
-            user_id = form.get('user_id')
-            org_id = form.get('org_id')
+        print(f"Authorizing Notion with userId: {request.userId}, orgId: {request.orgId}")
+        response = await notion.authorize_notion(request.userId, request.orgId)
+        print(f"Notion authorization response: {response}")
+        return response
+    except Exception as e:
+        import traceback
+        error_details = f"Error authorizing Notion: {str(e)}\n{traceback.format_exc()}"
+        print(error_details)
+        raise HTTPException(status_code=500, detail=error_details)
 
-        if not user_id or not org_id:
-            raise HTTPException(status_code=400, detail="Missing user_id/org_id")
+@router.get("/notion/oauthCallback", include_in_schema=False)
+async def notion_callback(request: Request):
+    try:
+        return await notion.oauth2callback_notion(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        auth_url = await provider_funcs["authorize"](user_id, org_id)
+@router.get("/notion/status")
+async def get_notion_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
+    try:
+        credentials = await notion.get_notion_credentials(user_id, org_id)
+        return {
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/notion/data")
+async def get_notion_data(request: DataRequest):
+    try:
+        data = await notion.get_items_notion(request.credentials)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Airtable routes
+@router.post("/airtable/authorize")
+async def authorize_airtable(request: AuthorizeRequest):
+    try:
+        auth_url = await airtable.authorize_airtable(request.userId, request.orgId)
         return {"url": auth_url}
-    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Authorization error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/integrations/{provider}/credentials")
-async def get_integration_credentials(provider: str, request: Request):
-    """Retrieve stored OAuth credentials for a provider."""
+@router.get("/airtable/oauth2callback")
+async def airtable_callback(request: Request):
     try:
-        provider_funcs = get_provider_functions(provider)
-        
-        # Handle both JSON and form data
-        content_type = request.headers.get('content-type', '')
-        if 'application/json' in content_type:
-            body = await request.json()
-            user_id = body.get('user_id')
-            org_id = body.get('org_id')
-        else:
-            form = await request.form()
-            user_id = form.get('user_id')
-            org_id = form.get('org_id')
-
-        if not user_id or not org_id:
-            raise HTTPException(status_code=400, detail="Missing user_id/org_id")
-
-        credentials = await provider_funcs["get_credentials"](user_id, org_id)
-        return credentials
-    
+        return await airtable.oauth2callback_airtable(request)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve credentials: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/integrations/{provider}/status")
-async def get_integration_status(provider: str, user_id: str, org_id: str = None):
-    """Fetch the connection status and workspace details for an integration."""
+@router.get("/airtable/status")
+async def get_airtable_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
     try:
-        provider_funcs = get_provider_functions(provider)
-        credentials = await provider_funcs["get_credentials"](user_id, org_id or user_id)
-        items = await provider_funcs["get_items"](credentials)
-
+        credentials = await airtable.get_airtable_credentials(user_id, org_id)
         return {
-            "isConnected": True,
-            "status": "active",
-            "lastSync": "2025-03-12T12:00:00Z",
-            "workspace": items
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
         }
-    
     except Exception as e:
+        if isinstance(e, HTTPException) and e.status_code == 404:
+            return {
+                "isConnected": False,
+                "status": "inactive"
+            }
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/airtable/data")
+async def get_airtable_data(request: DataRequest):
+    try:
+        items = await airtable.get_items_airtable(request.credentials, request.userId, request.orgId)
+        return items
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# HubSpot routes
+@router.post("/hubspot/authorize")
+async def authorize_hubspot(request: AuthorizeRequest):
+    try:
+        result = await hubspot.authorize_hubspot(request.userId, request.orgId)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/hubspot/oauth2callback")
+async def hubspot_callback(request: Request):
+    try:
+        return await hubspot.oauth2callback_hubspot(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/hubspot/status")
+async def get_hubspot_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
+    try:
+        credentials = await hubspot.get_hubspot_credentials(user_id, org_id)
         return {
-            "isConnected": False,
-            "status": "error",
-            "error": str(e)
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
         }
+    except Exception as e:
+        if isinstance(e, HTTPException) and e.status_code == 404:
+            return {
+                "isConnected": False,
+                "status": "inactive"
+            }
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/integrations/{provider}/sync")
-async def sync_integration(provider: str, user_id: str, org_id: str = None):
-    """Sync the latest data from the integration provider."""
+@router.post("/hubspot/data")
+async def get_hubspot_data(request: DataRequest):
     try:
-        provider_funcs = get_provider_functions(provider)
-        credentials = await provider_funcs["get_credentials"](user_id, org_id or user_id)
-        items = await provider_funcs["get_items"](credentials)
+        items = await hubspot.get_items_hubspot(request.userId, request.orgId)
+        return items
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
+# Slack routes
+@router.post("/slack/authorize")
+async def authorize_slack(request: AuthorizeRequest):
+    try:
+        auth_url = await slack.authorize_slack(request.userId, request.orgId)
+        return {"auth_url": auth_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/slack/oauth2callback")
+async def slack_callback(request: Request):
+    try:
+        return await slack.oauth2callback_slack(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/slack/status")
+async def get_slack_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
+    try:
+        credentials = await slack.get_slack_credentials(user_id, org_id)
         return {
-            "isConnected": True,
-            "status": "active",
-            "lastSync": "2025-03-12T12:00:00Z",
-            "workspace": items
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
         }
-    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}")
+        if isinstance(e, HTTPException) and e.status_code == 404:
+            return {
+                "isConnected": False,
+                "status": "inactive"
+            }
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/integrations/{provider}/disconnect")
-async def disconnect_integration(provider: str, user_id: str, org_id: str = None):
-    """Disconnect an integration and delete stored credentials."""
+@router.post("/slack/data")
+async def get_slack_data(request: DataRequest):
     try:
-        provider_funcs = get_provider_functions(provider)
-
-        # Remove credentials from Redis
-        redis_key = f"{provider}_credentials:{org_id or user_id}"
-        await delete_key_redis(redis_key)
-
-        # Remove from Cassandra (if applicable)
-        cassandra_query = f"DELETE FROM integrations WHERE provider='{provider}' AND user_id='{user_id}'"
-        cassandra.execute(cassandra_query)
-
-        return {"status": "success", "message": f"Disconnected {provider} for user {user_id}"}
-    
+        data = await slack.get_items_slack(request.credentials, request.userId, request.orgId)
+        return data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Disconnection error: {str(e)}")
-
-@router.get("/integrations/{provider}/oauth2callback")
-async def oauth_callback(provider: str, request: Request):
-    """Handle OAuth2 callback from provider."""
-    try:
-        provider_funcs = get_provider_functions(provider)
-        return await provider_funcs["oauth2callback"](request)
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OAuth2 callback error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
