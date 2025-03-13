@@ -1,5 +1,50 @@
 import axios from "axios"
 
+export interface UserProfile {
+  id: string
+  name: string
+  email: string
+  image?: string
+  bio?: string
+}
+
+export async function getUserProfile(userId: string): Promise<UserProfile> {
+  try {
+    const response = await axios.get(`/api/users/${userId}/profile`)
+    return response.data
+  } catch (error) {
+    console.error('Error getting user profile:', error)
+    throw new Error('Failed to get user profile')
+  }
+}
+
+export async function uploadProfileImage(userId: string, file: File): Promise<{ imageUrl: string }> {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await axios.post(`/api/users/${userId}/profile/image`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+    return response.data
+  } catch (error) {
+    console.error('Error uploading profile image:', error)
+    throw new Error('Failed to upload profile image')
+  }
+}
+
+export async function updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<UserProfile> {
+  try {
+    const response = await axios.patch(`/api/users/${userId}/profile`, data)
+    return response.data
+  } catch (error) {
+    console.error('Error updating user profile:', error)
+    throw new Error('Failed to update user profile')
+  }
+}
+
 // Define types
 export interface IntegrationStatus {
   isConnected: boolean
