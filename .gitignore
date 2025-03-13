@@ -27,3 +27,4 @@ typescript
 next-env.d.ts
 
 venv/backend/server.log
+venv/
