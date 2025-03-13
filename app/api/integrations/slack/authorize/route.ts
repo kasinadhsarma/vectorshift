@@ -14,14 +14,15 @@ export async function POST(request: Request) {
     })
 
     if (!response.ok) {
-      throw new Error(`Backend returned ${response.status}`)
+      const errorText = await response.text();
+      throw new Error(`Backend returned ${response.status}: ${errorText}`);
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
     console.error("Error in slack authorize:", error)
-    return NextResponse.json({ detail: "Failed to authorize slack integration" }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "Failed to authorize slack integration";
+    return NextResponse.json({ detail: errorMessage }, { status: 500 });
   }
 }
-
