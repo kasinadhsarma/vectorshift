@@ -8,7 +8,7 @@ export async function POST(request: Request) {
 
     console.log(`Authorizing Notion for user: ${userId}, orgId: ${orgId || 'not provided'}`)
 
-    const backendUrl = "http://localhost:8000/api/integrations/notion/authorize"
+    const backendUrl = process.env.BACKEND_URL + "/api/integrations/notion/authorize"
     console.log(`Making request to backend: ${backendUrl}`)
     console.log("Request body:", { userId, orgId })
 
