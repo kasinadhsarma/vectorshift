@@ -150,7 +150,7 @@ async def oauth2callback_airtable(request: Request):
                     'code': code,
                     'redirect_uri': REDIRECT_URI,
                     'client_id': CLIENT_ID,
-                    'code_verifier': code_verifier.decode(),
+                    'code_verifier': code_verifier,
                 },
                 headers={
                     'Authorization': f'Basic {encoded_client_id_secret}',
