@@ -25,7 +25,7 @@ import { NotionCredentials } from "@/app/components/integrations/types"
 
 interface IntegrationParams {
   credentials?: NotionCredentials
-  type?: string
+  type?: "Notion" | "Airtable" | "Hubspot" | "Slack"
 }
 
 interface IntegrationData {
