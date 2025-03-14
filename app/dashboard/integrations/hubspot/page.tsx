@@ -1,15 +1,33 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getIntegrationStatus, getIntegrationData } from "@/app/lib/api-client"
+import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { HubspotIntegration } from "@/app/components/integrations/hubspot-integration"
 import { BarChart3, RefreshCw } from "lucide-react"
 
+interface HubSpotContact {
+  id: string
+  name: string
+  email?: string
+  company?: string
+  lastModified: string
+}
+
+interface HubSpotData {
+  contacts?: HubSpotContact[]
+  companies?: any[]
+  deals?: any[]
+  isConnected: boolean
+  status: 'active' | 'inactive' | 'error'
+  lastSync?: string
+  error?: string
+}
+
 export default function HubspotIntegrationPage() {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<HubSpotData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -65,49 +83,39 @@ export default function HubspotIntegrationPage() {
     setIsLoading(true)
     setError(null)
     try {
-      const hubspotData = await getIntegrationData("hubspot", credentials, userId, orgId)
-
-      // Process the data
-      const processedData: { contacts: Contact[], companies: Company[], deals: Deal[] } = {
-        contacts: [],
-        companies: [],
-        deals: [],
+      const status = await getIntegrationStatus("hubspot", userId, orgId)
+      setIsConnected(status.isConnected)
+      
+      if (!status.isConnected) {
+        throw new Error("HubSpot is not connected")
       }
 
-      // Process items based on their type
-      hubspotData.forEach((item: any) => {
-        const getParam = (name: string) => {
-          const param = item.parameters?.find((p: any) => p.name === name)
-          return param ? param.value : ""
-        }
-
-        if (item.type === "contact") {
-          processedData.contacts.push({
-            id: item.id,
-            name: item.name,
-            email: getParam("email"),
-            company: getParam("company"),
-          })
-        } else if (item.type === "company") {
-          processedData.companies.push({
-            id: item.id,
-            name: item.name,
-            domain: getParam("domain"),
-            industry: getParam("industry"),
-            phone: getParam("phone"),
-          })
-        } else if (item.type === "deal") {
-          processedData.deals.push({
-            id: item.id,
-            name: item.name,
-            amount: getParam("amount"),
-            stage: getParam("stage"),
-            closeDate: getParam("closedate"),
-          })
-        }
-      })
-
-      setData(processedData)
+      if (status.status === "active") {
+        // Fetch actual HubSpot data using credentials
+        const hubspotData = await getIntegrationData(
+          "hubspot",
+          status.credentials,
+          userId,
+          orgId
+        )
+        setData({
+          ...status,
+          ...hubspotData
+        })
+      } else {
+        await syncIntegrationData("hubspot", userId, orgId)
+        const updatedStatus = await getIntegrationStatus("hubspot", userId, orgId)
+        const hubspotData = await getIntegrationData(
+          "hubspot",
+          updatedStatus.credentials,
+          userId,
+          orgId
+        )
+        setData({
+          ...updatedStatus,
+          ...hubspotData
+        })
+      }
     } catch (err) {
       console.error("Error fetching data:", err)
       setError(err instanceof Error ? err.message : "An unknown error occurred")
@@ -143,7 +151,13 @@ export default function HubspotIntegrationPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <HubspotIntegration userId={userId} orgId={orgId} />
+            <HubspotIntegration
+              userId={userId}
+              orgId={orgId}
+            />
+            {error && (
+              <p className="text-sm text-destructive mt-2">{error}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -200,13 +214,20 @@ export default function HubspotIntegrationPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.contacts?.map((contact: any) => (
+                      {data.contacts?.map((contact) => (
                         <tr key={contact.id} className="border-b">
                           <td className="p-2">{contact.name}</td>
                           <td className="p-2">{contact.email || "N/A"}</td>
                           <td className="p-2">{contact.company || "N/A"}</td>
                         </tr>
                       ))}
+                      {(!data.contacts || data.contacts.length === 0) && (
+                        <tr>
+                          <td colSpan={3} className="text-center py-4 text-muted-foreground">
+                            No contacts found
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
