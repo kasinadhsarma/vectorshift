@@ -11,7 +11,7 @@ from fastapi import Request, HTTPException
 from fastapi.responses import HTMLResponse
 from urllib.parse import quote, urlparse, urlunparse
 import httpx
-from integrations.integration_item import IntegrationItem, IntegrationItemParameter
+from integrations.integration_item import IntegrationItem
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
 # Configure logging
@@ -294,7 +294,7 @@ async def oauth2callback_notion(request: Request):
         """)
 
 async def get_notion_credentials(user_id: str, org_id: str = None) -> Optional[Dict[str, Any]]:
-    """Get stored Notion credentials"""
+    """Get stored Notion credentials and connection status"""
     try:
         redis_key = f'notion_credentials:{org_id}:{user_id}' if org_id else f'notion_credentials:{user_id}'
         logger.info(f"Getting Notion credentials for user {user_id}")
@@ -302,20 +302,48 @@ async def get_notion_credentials(user_id: str, org_id: str = None) -> Optional[D
         stored_creds = await get_value_redis(redis_key)
         if not stored_creds:
             logger.info("No credentials found")
-            return None
+            return {
+                "isConnected": False,
+                "status": "inactive",
+                "credentials": None
+            }
             
-        if isinstance(stored_creds, str):
-            try:
-                return json.loads(stored_creds)
-            except json.JSONDecodeError:
-                logger.error("Invalid credentials format")
-                return None
+        try:
+            if isinstance(stored_creds, str):
+                credentials = json.loads(stored_creds)
+            else:
+                credentials = stored_creds
                 
-        return stored_creds
+            # Validate access token exists
+            if not credentials.get('access_token'):
+                return {
+                    "isConnected": False,
+                    "status": "invalid",
+                    "credentials": None
+                }
+                
+            return {
+                "isConnected": True,
+                "status": "active",
+                "credentials": credentials
+            }
+                
+        except json.JSONDecodeError:
+            logger.error("Invalid credentials format")
+            return {
+                "isConnected": False,
+                "status": "error",
+                "credentials": None
+            }
         
     except Exception as e:
         logger.error(f"Error getting credentials: {str(e)}")
-        return None
+        return {
+            "isConnected": False,
+            "status": "error",
+            "credentials": None,
+            "error": str(e)
+        }
 
 async def get_items_notion(credentials: Dict[str, Any]) -> Dict[str, Any]:
     """Fetch databases and pages from Notion."""

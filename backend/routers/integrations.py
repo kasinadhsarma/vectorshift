@@ -1,154 +1,199 @@
 """Integration routes module."""
-from fastapi import APIRouter, Depends, HTTPException, Request
-from typing import Dict
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi.security import HTTPBearer
+from typing import Dict, Optional, List
+from pydantic import BaseModel
+import logging
 
+from cassandra_client import CassandraClient
 from integrations.notion import (
-    authorize_notion, oauth2callback_notion, get_notion_credentials, get_items_notion
+    authorize_notion, oauth2callback_notion,
+    get_notion_credentials, get_items_notion
 )
 from integrations.airtable import (
-    authorize_airtable, oauth2callback_airtable, get_airtable_credentials, get_items_airtable
-)
-from integrations.hubspot import (
-    authorize_hubspot, oauth2callback_hubspot, get_hubspot_credentials, get_items_hubspot
+    authorize_airtable, oauth2callback_airtable,
+    get_airtable_credentials, get_items_airtable
 )
 from integrations.slack import (
-    authorize_slack, oauth2callback_slack, get_slack_credentials, get_items_slack
+    authorize_slack, oauth2callback_slack,
+    get_slack_credentials, get_items_slack
 )
+from integrations.hubspot import (
+    authorize_hubspot, oauth2callback_hubspot,
+    get_hubspot_credentials, get_items_hubspot
+)
+from redis_client import get_value_redis, delete_key_redis
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
+security = HTTPBearer()
+cassandra = CassandraClient()
 
-async def get_status_response(creds_result: Dict) -> Dict:
-    """Format status response consistently."""
-    if not creds_result:
-        return {
-            "isConnected": False,
-            "status": "inactive",
-            "credentials": None
+class AuthorizeRequest(BaseModel):
+    """Request model for authorization endpoints."""
+    userId: str
+    orgId: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        alias_generator = lambda string: string.replace('Id', '_id')
+
+class DataRequest(BaseModel):
+    """Request model for data endpoints."""
+    credentials: Dict
+    userId: str
+    orgId: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        alias_generator = lambda string: string.replace('Id', '_id')
+
+async def get_current_user(token: str = Depends(security)):
+    """Mock authentication for development."""
+    return {"id": "mock_user"}
+
+def get_provider_functions(provider: str) -> Dict:
+    """Get the appropriate functions for a given provider."""
+    providers = {
+        "notion": {
+            "authorize": authorize_notion,
+            "oauth2callback": oauth2callback_notion,
+            "get_credentials": get_notion_credentials,
+            "get_items": get_items_notion
+        },
+        "airtable": {
+            "authorize": authorize_airtable,
+            "oauth2callback": oauth2callback_airtable,
+            "get_credentials": get_airtable_credentials,
+            "get_items": get_items_airtable
+        },
+        "slack": {
+            "authorize": authorize_slack,
+            "oauth2callback": oauth2callback_slack,
+            "get_credentials": get_slack_credentials,
+            "get_items": get_items_slack
+        },
+        "hubspot": {
+            "authorize": authorize_hubspot,
+            "oauth2callback": oauth2callback_hubspot,
+            "get_credentials": get_hubspot_credentials,
+            "get_items": get_items_hubspot
         }
-    
-    return {
-        "isConnected": creds_result.get('isConnected', False),
-        "status": creds_result.get('status', 'inactive'),
-        "credentials": creds_result.get('credentials')
     }
+    
+    if provider not in providers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported provider: {provider}"
+        )
+    
+    return providers[provider]
 
-# Notion routes
-@router.post("/notion/authorize")
-async def notion_authorize(request: Request):
-    data = await request.json()
-    return await authorize_notion(data.get('userId'), data.get('orgId'))
-
-@router.get("/notion/oauth2callback")
-async def notion_callback(request: Request):
-    return await oauth2callback_notion(request)
-
-@router.get("/notion/status")
-async def notion_status(userId: str, orgId: str = None):
+# Generic provider routes
+@router.post("/{provider}/authorize")
+async def authorize_integration(provider: str, request: AuthorizeRequest):
+    """Generate OAuth authorization URL for the provider."""
     try:
-        creds = await get_notion_credentials(userId, orgId)
-        return await get_status_response(creds)
+        logger.info(f"Authorizing {provider} for user {request.userId} in org {request.orgId}")
+        provider_funcs = get_provider_functions(provider)
+        auth_url = await provider_funcs["authorize"](request.userId, request.orgId)
+        logger.info("Authorization URL generated successfully")
+        return auth_url
+        
     except Exception as e:
-        return {
-            "isConnected": False,
-            "status": "error",
-            "credentials": None,
-            "error": str(e)
-        }
+        logger.error(f"Error authorizing {provider}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Airtable routes
-@router.post("/airtable/authorize")
-async def airtable_authorize(request: Request):
-    data = await request.json()
-    return await authorize_airtable(data.get('userId'), data.get('orgId'))
-
-@router.get("/airtable/oauth2callback")
-async def airtable_callback(request: Request):
-    return await oauth2callback_airtable(request)
-
-@router.get("/airtable/status")
-async def airtable_status(userId: str, orgId: str = None):
+@router.get("/{provider}/oauth2callback")
+async def oauth_callback(provider: str, request: Request):
+    """Handle OAuth2 callback from provider."""
     try:
-        creds = await get_airtable_credentials(userId, orgId)
-        return await get_status_response(creds)
+        logger.info(f"Processing {provider} OAuth callback")
+        provider_funcs = get_provider_functions(provider)
+        result = await provider_funcs["oauth2callback"](request)
+        logger.info(f"Successfully processed {provider} OAuth callback")
+        return result
+        
     except Exception as e:
-        return {
-            "isConnected": False,
-            "status": "error",
-            "credentials": None,
-            "error": str(e)
-        }
+        logger.error(f"Error in {provider} OAuth callback: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-# HubSpot routes
-@router.post("/hubspot/authorize")
-async def hubspot_authorize(request: Request):
-    data = await request.json()
-    return await authorize_hubspot(data.get('userId'), data.get('orgId'))
-
-@router.get("/hubspot/oauth2callback")
-async def hubspot_callback(request: Request):
-    return await oauth2callback_hubspot(request)
-
-@router.get("/hubspot/status")
-async def hubspot_status(userId: str, orgId: str = None):
+@router.get("/{provider}/status")
+async def get_integration_status(
+    provider: str,
+    user_id: str = Query(..., alias="userId"),
+    org_id: str = Query(None, alias="orgId")
+):
+    """Fetch the connection status and details for an integration."""
     try:
-        creds = await get_hubspot_credentials(userId, orgId)
-        return await get_status_response(creds)
-    except Exception as e:
+        logger.info(f"Checking {provider} status for user {user_id}")
+        provider_funcs = get_provider_functions(provider)
+        credentials = await provider_funcs["get_credentials"](user_id, org_id)
+        
+        if not credentials:
+            logger.info(f"No {provider} credentials found")
+            return {
+                "isConnected": False,
+                "status": "inactive",
+                "credentials": None
+            }
+            
+        logger.info(f"Successfully retrieved {provider} credentials")
         return {
-            "isConnected": False,
-            "status": "error",
-            "credentials": None,
-            "error": str(e)
+            "isConnected": True,
+            "status": "active",
+            "credentials": credentials
         }
+        
+    except Exception as e:
+        logger.error(f"Error checking {provider} status: {str(e)}")
+        if isinstance(e, HTTPException) and e.status_code == 404:
+            return {
+                "isConnected": False,
+                "status": "inactive"
+            }
+        raise HTTPException(status_code=500, detail=str(e))
 
-# Slack routes
-@router.post("/slack/authorize")
-async def slack_authorize(request: Request):
-    data = await request.json()
-    return await authorize_slack(data.get('userId'), data.get('orgId'))
-
-@router.get("/slack/oauth2callback")
-async def slack_callback(request: Request):
-    return await oauth2callback_slack(request)
-
-@router.get("/slack/status")
-async def slack_status(userId: str, orgId: str = None):
+@router.post("/{provider}/data")
+async def get_integration_data(provider: str, request: DataRequest):
+    """Fetch data from the integration provider."""
     try:
-        creds = await get_slack_credentials(userId, orgId)
-        return await get_status_response(creds)
+        logger.info(f"Fetching {provider} data for user {request.userId}")
+        provider_funcs = get_provider_functions(provider)
+        data = await provider_funcs["get_items"](request.credentials)
+        logger.info(f"Successfully retrieved {provider} data")
+        return data
+        
     except Exception as e:
+        logger.error(f"Error fetching {provider} data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{provider}/disconnect")
+async def disconnect_integration(
+    provider: str,
+    user_id: str = Query(..., alias="userId"),
+    org_id: str = Query(None, alias="orgId")
+):
+    """Disconnect an integration and delete stored credentials."""
+    try:
+        logger.info(f"Disconnecting {provider} for user {user_id}")
+        
+        # Remove credentials from Redis
+        redis_key = f"{provider}_credentials:{org_id or user_id}:{user_id}"
+        await delete_key_redis(redis_key)
+        
+        # Remove from Cassandra (if applicable)
+        cassandra_query = f"DELETE FROM integrations WHERE provider='{provider}' AND user_id='{user_id}'"
+        await cassandra.execute(cassandra_query)
+        
+        logger.info(f"Successfully disconnected {provider}")
         return {
-            "isConnected": False,
-            "status": "error",
-            "credentials": None,
-            "error": str(e)
+            "status": "success",
+            "message": f"Successfully disconnected {provider}"
         }
-
-# Data fetching routes
-@router.get("/notion/data")
-async def notion_data(userId: str, orgId: str = None):
-    creds = await get_notion_credentials(userId, orgId)
-    if not creds or not creds.get('credentials'):
-        raise HTTPException(status_code=401, detail="Not connected to Notion")
-    return await get_items_notion(creds['credentials'])
-
-@router.get("/airtable/data")
-async def airtable_data(userId: str, orgId: str = None):
-    creds = await get_airtable_credentials(userId, orgId)
-    if not creds or not creds.get('credentials'):
-        raise HTTPException(status_code=401, detail="Not connected to Airtable")
-    return await get_items_airtable(creds['credentials'])
-
-@router.get("/hubspot/data")
-async def hubspot_data(userId: str, orgId: str = None):
-    creds = await get_hubspot_credentials(userId, orgId)
-    if not creds or not creds.get('credentials'):
-        raise HTTPException(status_code=401, detail="Not connected to HubSpot")
-    return await get_items_hubspot(creds['credentials'])
-
-@router.get("/slack/data")
-async def slack_data(userId: str, orgId: str = None):
-    creds = await get_slack_credentials(userId, orgId)
-    if not creds or not creds.get('credentials'):
-        raise HTTPException(status_code=401, detail="Not connected to Slack")
-    return await get_items_slack(creds['credentials'])
+        
+    except Exception as e:
+        logger.error(f"Error disconnecting {provider}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

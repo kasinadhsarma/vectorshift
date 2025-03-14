@@ -7,7 +7,7 @@ import logging
 from auth_routes import router as auth_router
 from routes.dashboard import router as dashboard_router
 from routes.profiles import router as profile_router
-from routes.integrations import router as integrations_router
+from routers.integrations import router as integrations_router
 from routes.users import router as users_router
 from integrations.google_auth import google_auth_url, google_auth_callback, get_google_user_info
 

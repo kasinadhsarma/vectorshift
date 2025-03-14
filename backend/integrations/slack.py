@@ -7,7 +7,7 @@ from fastapi import Request, HTTPException
 from fastapi.responses import HTMLResponse
 import httpx
 import asyncio
-from integrations.integration_item import IntegrationItem, IntegrationItemParameter
+from integrations.integration_item import IntegrationItem
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
 # Configure logging
