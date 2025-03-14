@@ -12,7 +12,6 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "VectorAI Task Integration Platform",
   description: "Advanced UI for managing third-party integrations",
-  generator: "v0.dev",
 }
 
 export default function RootLayout({

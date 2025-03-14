@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """Integration routes for OAuth providers."""
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.security import HTTPBearer
@@ -30,35 +31,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 security = HTTPBearer()
 cassandra = CassandraClient()
+=======
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from typing import Dict, Optional, List
+from pydantic import BaseModel
+from integrations import notion, airtable, hubspot, slack
 
-# Provider mapping for OAuth integrations
-PROVIDER_MAP = {
-    "notion": {
-        "authorize": authorize_notion,
-        "oauth2callback": oauth2callback_notion,
-        "get_credentials": get_notion_credentials,
-        "get_items": get_items_notion,
-    },
-    "airtable": {
-        "authorize": authorize_airtable,
-        "oauth2callback": oauth2callback_airtable,
-        "get_credentials": get_airtable_credentials,
-        "get_items": get_items_airtable,
-    },
-    "slack": {
-        "authorize": authorize_slack,
-        "oauth2callback": oauth2callback_slack,
-        "get_credentials": get_slack_credentials,
-        "get_items": get_items_slack,
-    },
-    "hubspot": {
-        "authorize": authorize_hubspot,
-        "oauth2callback": oauth2callback_hubspot,
-        "get_credentials": get_hubspot_credentials,
-        "get_items": get_items_hubspot,
-    }
-}
+router = APIRouter(prefix="/integrations")
+>>>>>>> origin/main
 
+class AuthorizeRequest(BaseModel):
+    userId: str
+    orgId: Optional[str] = None
+
+<<<<<<< HEAD
 class AuthorizeRequest(BaseModel):
     """Request model for authorization endpoints."""
     userId: str
@@ -71,13 +57,18 @@ class AuthorizeRequest(BaseModel):
 async def get_current_user(token: str = Depends(security)):
     """Mock authentication for development."""
     return {"id": "mock_user"}
+=======
+    class Config:
+        populate_by_name = True
+        alias_generator = lambda string: string.replace('Id', '_id')
+>>>>>>> origin/main
 
-def get_provider_functions(provider: str) -> Dict[str, Callable]:
-    """Retrieve provider-specific OAuth functions."""
-    if provider not in PROVIDER_MAP:
-        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
-    return PROVIDER_MAP[provider]
+class DataRequest(BaseModel):
+    credentials: Dict
+    userId: str
+    orgId: Optional[str] = None
 
+<<<<<<< HEAD
 @router.post("/integrations/{provider}/authorize")
 async def authorize_integration(provider: str, request: AuthorizeRequest):
     """Generate OAuth authorization URL for the provider."""
@@ -86,9 +77,61 @@ async def authorize_integration(provider: str, request: AuthorizeRequest):
         provider_funcs = get_provider_functions(provider)
         auth_url = await provider_funcs["authorize"](request.userId, request.orgId)
         logger.info("Authorization URL generated successfully")
-        return {"url": auth_url}
-    
+=======
+    class Config:
+        populate_by_name = True
+        alias_generator = lambda string: string.replace('Id', '_id')
+
+# Notion routes
+@router.post("/notion/authorize")
+async def authorize_notion(request: AuthorizeRequest):
+    try:
+        print(f"Authorizing Notion with userId: {request.userId}, orgId: {request.orgId}")
+        response = await notion.authorize_notion(request.userId, request.orgId)
+        print(f"Notion authorization response: {response}")
+        return response
     except Exception as e:
+        import traceback
+        error_details = f"Error authorizing Notion: {str(e)}\n{traceback.format_exc()}"
+        print(error_details)
+        raise HTTPException(status_code=500, detail=error_details)
+
+@router.get("/notion/oauthCallback", include_in_schema=False)
+async def notion_callback(request: Request):
+    try:
+        return await notion.oauth2callback_notion(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/notion/status")
+async def get_notion_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
+    try:
+        credentials = await notion.get_notion_credentials(user_id, org_id)
+        return {
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/notion/data")
+async def get_notion_data(request: DataRequest):
+    try:
+        data = await notion.get_items_notion(request.credentials)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Airtable routes
+@router.post("/airtable/authorize")
+async def authorize_airtable(request: AuthorizeRequest):
+    try:
+        auth_url = await airtable.authorize_airtable(request.userId, request.orgId)
+>>>>>>> origin/main
+        return {"url": auth_url}
+    except Exception as e:
+<<<<<<< HEAD
         logger.error(f"Error authorizing {provider}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -131,21 +174,80 @@ async def get_integration_status(
 
         items = await provider_funcs["get_items"](credentials)
         logger.info(f"Successfully retrieved {provider} workspace data")
-        return {
-            "isConnected": True,
-            "status": "active",
-            "lastSync": "2025-03-12T12:00:00Z",
-            "workspace": items
-        }
-    
-    except Exception as e:
-        logger.error(f"Error checking {provider} status: {str(e)}")
-        return {
-            "isConnected": False,
-            "status": "error",
-            "error": str(e)
-        }
+=======
+        raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/airtable/oauth2callback")
+async def airtable_callback(request: Request):
+    try:
+        return await airtable.oauth2callback_airtable(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/airtable/status")
+async def get_airtable_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
+    try:
+        credentials = await airtable.get_airtable_credentials(user_id, org_id)
+>>>>>>> origin/main
+        return {
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
+        }
+    except Exception as e:
+<<<<<<< HEAD
+        logger.error(f"Error checking {provider} status: {str(e)}")
+=======
+        if isinstance(e, HTTPException) and e.status_code == 404:
+            return {
+                "isConnected": False,
+                "status": "inactive"
+            }
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/airtable/data")
+async def get_airtable_data(request: DataRequest):
+    try:
+        items = await airtable.get_items_airtable(request.credentials, request.userId, request.orgId)
+        return items
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# HubSpot routes
+@router.post("/hubspot/authorize")
+async def authorize_hubspot(request: AuthorizeRequest):
+    try:
+        result = await hubspot.authorize_hubspot(request.userId, request.orgId)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/hubspot/oauth2callback")
+async def hubspot_callback(request: Request):
+    try:
+        return await hubspot.oauth2callback_hubspot(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/hubspot/status")
+async def get_hubspot_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
+    try:
+        credentials = await hubspot.get_hubspot_credentials(user_id, org_id)
+>>>>>>> origin/main
+        return {
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException) and e.status_code == 404:
+            return {
+                "isConnected": False,
+                "status": "inactive"
+            }
+        raise HTTPException(status_code=500, detail=str(e))
+
+<<<<<<< HEAD
 @router.post("/integrations/{provider}/sync")
 async def sync_integration(
     provider: str,
@@ -160,14 +262,55 @@ async def sync_integration(
         items = await provider_funcs["get_items"](credentials)
         
         logger.info(f"Successfully synced {provider} data")
-        return {
-            "isConnected": True,
-            "status": "active",
-            "lastSync": "2025-03-12T12:00:00Z",
-            "workspace": items
-        }
-    
+=======
+@router.post("/hubspot/data")
+async def get_hubspot_data(request: DataRequest):
+    try:
+        items = await hubspot.get_items_hubspot(request.userId, request.orgId)
+        return items
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Slack routes
+@router.post("/slack/authorize")
+async def authorize_slack(request: AuthorizeRequest):
+    try:
+        auth_url = await slack.authorize_slack(request.userId, request.orgId)
+        return {"auth_url": auth_url}
+    except HTTPException as e:
+        if e.status_code == 400 and "invalid_scope" in e.detail:
+            return {"detail": "Invalid scope provided for Slack authorization"}, 400
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/slack/oauth2callback")
+async def slack_callback(request: Request):
+    try:
+        return await slack.oauth2callback_slack(request)
+    except HTTPException as e:
+        if e.status_code == 400 and "invalid_scope" in e.detail:
+            return {"detail": "Invalid scope provided for Slack authorization"}, 400
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/slack/status")
+async def get_slack_status(user_id: str = Query(..., alias="userId"), org_id: str = Query(None, alias="orgId")):
+    try:
+        credentials = await slack.get_slack_credentials(user_id, org_id)
+>>>>>>> origin/main
+        return {
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
+        }
+    except HTTPException as e:
+        if e.status_code == 400 and "invalid_scope" in e.detail:
+            return {"detail": "Invalid scope provided for Slack authorization"}, 400
+        raise e
+    except Exception as e:
+<<<<<<< HEAD
         logger.error(f"Error syncing {provider} data: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -211,4 +354,19 @@ async def oauth_callback(provider: str, request: Request):
     
     except Exception as e:
         logger.error(f"Error in {provider} OAuth callback: {str(e)}")
+=======
+        if isinstance(e, HTTPException) and e.status_code == 404:
+            return {
+                "isConnected": False,
+                "status": "inactive"
+            }
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/slack/data")
+async def get_slack_data(request: DataRequest):
+    try:
+        data = await slack.get_items_slack(request.credentials, request.userId, request.orgId)
+        return data
+    except Exception as e:
+>>>>>>> origin/main
         raise HTTPException(status_code=500, detail=str(e))

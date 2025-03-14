@@ -30,7 +30,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             )
     return user_data
 
-@router.get("/api/users/{hashed_id}/dashboard")
+@router.get("/users/{hashed_id}/dashboard")
 async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_current_user)):
     """Get user-specific dashboard data"""
     try:
@@ -47,6 +47,10 @@ async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_cu
         # Get user's integrations from database
         integrations = await cassandra.get_user_integrations(original_user_id)
         
+        # Add a check to ensure integrations is not None
+        if integrations is None:
+            integrations = []
+
         # Calculate statistics
         now = datetime.now()
         total_integrations = len(integrations)
@@ -87,10 +91,14 @@ async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_cu
         }
         
     except Exception as e:
+<<<<<<< HEAD
+=======
+        # Add detailed error logging
+>>>>>>> origin/main
         print(f"Error in get_user_dashboard: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard data: {str(e)}")
 
-@router.post("/api/users/{hashed_id}/dashboard/refresh")
+@router.post("/users/{hashed_id}/dashboard/refresh")
 async def refresh_dashboard_data(hashed_id: str, current_user: Dict = Depends(get_current_user)):
     """Refresh user's dashboard data"""
     try:

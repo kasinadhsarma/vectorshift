@@ -1,12 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
+<<<<<<< HEAD
 import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
+=======
+import { getIntegrationStatus, getIntegrationData } from "@/app/lib/api-client"
+>>>>>>> origin/main
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { NotionIntegration } from "@/app/components/integrations/notion-integration"
-import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { Lightbulb, RefreshCw } from "lucide-react"
 
 interface NotionPage {
@@ -48,13 +51,19 @@ export default function NotionIntegrationPage() {
   const userId = "user123"
   const orgId = "org456"
 
+<<<<<<< HEAD
   // Check connection status on mount
   useEffect(() => {
+=======
+  useEffect(() => {
+    // Check connection status on load
+>>>>>>> origin/main
     const checkConnection = async () => {
       try {
         const status = await getIntegrationStatus("notion", userId, orgId)
         setIsConnected(status.isConnected)
         if (status.isConnected && status.credentials) {
+<<<<<<< HEAD
           // Store the credentials in the correct format
           const processedCreds = status.credentials.credentials || status.credentials
           setIntegrationParams({
@@ -69,6 +78,15 @@ export default function NotionIntegrationPage() {
       } catch (error) {
         console.error("Error checking connection:", error)
         setError(error instanceof Error ? error.message : "Failed to check connection status")
+=======
+          setIntegrationParams({
+            credentials: status.credentials,
+            type: "Notion",
+          })
+        }
+      } catch (error) {
+        console.error("Error checking connection:", error)
+>>>>>>> origin/main
       }
     }
 
@@ -76,10 +94,13 @@ export default function NotionIntegrationPage() {
   }, [userId, orgId])
 
   const fetchData = async () => {
+    if (!integrationParams?.credentials) return
+
     setIsLoading(true)
     setError(null)
     
     try {
+<<<<<<< HEAD
       // First check/update connection status
       const status = await getIntegrationStatus("notion", userId, orgId)
       setIsConnected(status.isConnected)
@@ -114,6 +135,59 @@ export default function NotionIntegrationPage() {
         })
       } else {
         setData(status)
+=======
+      const notionData = await getIntegrationData("notion", integrationParams.credentials, userId, orgId)
+
+      // Process the data
+      if (notionData.pages && notionData.databases) {
+        setData({
+          isConnected: true,
+          status: "active",
+          pages: notionData.pages,
+          databases: notionData.databases,
+          credentials: integrationParams.credentials,
+        })
+      } else {
+        // If the data doesn't match expected format, try to process it
+        const pages: NotionPage[] = []
+        const databases: NotionDatabase[] = []
+
+        if (Array.isArray(notionData)) {
+          notionData.forEach((item: any) => {
+            if (item.type === "page") {
+              const getParam = (name: string) => {
+                const param = item.parameters?.find((p: any) => p.name === name)
+                return param ? param.value : ""
+              }
+
+              pages.push({
+                id: item.id,
+                title: item.name,
+                lastEdited: getParam("last_edited") || new Date().toISOString(),
+              })
+            } else if (item.type === "database") {
+              const getParam = (name: string) => {
+                const param = item.parameters?.find((p: any) => p.name === name)
+                return param ? param.value : ""
+              }
+
+              databases.push({
+                id: item.id,
+                name: item.name,
+                items: Number.parseInt(getParam("items")) || 0,
+              })
+            }
+          })
+
+          setData({
+            isConnected: true,
+            status: "active",
+            pages,
+            databases,
+            credentials: integrationParams.credentials,
+          })
+        }
+>>>>>>> origin/main
       }
     } catch (err) {
       console.error("Error fetching data:", err)
@@ -131,12 +205,7 @@ export default function NotionIntegrationPage() {
           <p className="text-muted-foreground">Connect and manage your Notion workspace</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={fetchData}
-            disabled={isLoading || !isConnected}
-          >
+          <Button variant="outline" size="icon" onClick={fetchData} disabled={isLoading || !isConnected}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             <span className="sr-only">Refresh data</span>
           </Button>
@@ -196,16 +265,11 @@ export default function NotionIntegrationPage() {
       </div>
 
       {data && (
-        <Tabs defaultValue="visualization" className="space-y-4">
+        <Tabs defaultValue="pages" className="space-y-4">
           <TabsList>
-            <TabsTrigger value="visualization">Visualization</TabsTrigger>
             <TabsTrigger value="pages">Pages</TabsTrigger>
             <TabsTrigger value="databases">Databases</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="visualization">
-            <DataVisualization data={data} />
-          </TabsContent>
 
           <TabsContent value="pages">
             <Card>
@@ -269,3 +333,4 @@ export default function NotionIntegrationPage() {
     </div>
   )
 }
+

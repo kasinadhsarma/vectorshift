@@ -21,8 +21,12 @@ export async function GET(request: Request) {
       throw new Error("Missing required parameters");
     }
 
+<<<<<<< HEAD
     // Forward the request to the backend - fixed path to match FastAPI route
     const backendUrl = "http://localhost:8000/api/integrations/notion/oauth2callback";
+=======
+    const backendUrl = "http://localhost:8000/api/integrations/notion/oauthCallback";
+>>>>>>> origin/main
     console.log(`Making request to backend: ${backendUrl}`);
 
     const searchParams = new URLSearchParams({
@@ -46,7 +50,11 @@ export async function GET(request: Request) {
       throw new Error(`Backend error: ${errorText}`);
     }
 
+<<<<<<< HEAD
     // Return the HTML response that will close the popup and notify the parent window
+=======
+    // Close the popup window and send a message to the parent
+>>>>>>> origin/main
     return new NextResponse(
       `
       <html>
@@ -71,7 +79,11 @@ export async function GET(request: Request) {
     console.error("Error in Notion OAuth callback:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     
+<<<<<<< HEAD
     // Return an error page that will close the popup and notify the parent window
+=======
+    // Return an error page that also attempts to close the window
+>>>>>>> origin/main
     return new NextResponse(
       `
       <html>

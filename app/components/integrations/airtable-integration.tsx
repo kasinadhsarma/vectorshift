@@ -1,253 +1,268 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import axios, { type AxiosError } from "axios"
 import { Button } from "@/app/components/ui/button"
-import { useToast } from "@/hooks/use-toast"
-import { Badge } from "@/app/components/ui/badge"
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react"
-import {
-  authorizeIntegration,
-  getIntegrationStatus,
-  disconnectIntegration,
-  getAirtableBases,
-  syncIntegrationData,
-  IntegrationStatus,
-} from "@/app/lib/api-client"
+import { Loader2 } from "lucide-react"
+import { getIntegrationStatus, getIntegrationData } from "@/app/lib/api-client"
 
-interface AirtableIntegrationProps {
-  userId: string
-  orgId: string
+interface IntegrationParams {
+  credentials?: Record<string, any>
+  type?: string
 }
 
-import { AirtableBase } from "@/app/lib/api-client"
+interface AuthResponse {
+  url: string
+}
 
-interface AirtableWorkspace {
+interface ErrorResponse {
+  detail: string
+}
+
+interface IntegrationParameter {
+  name: string
+  value: string
+}
+
+interface IntegrationItem {
   id: string
   name: string
-  bases: Array<AirtableBase>
+  type: string
+  parameters: IntegrationParameter[]
 }
 
-export function AirtableIntegration({ userId, orgId }: AirtableIntegrationProps) {
+interface AirtableBase {
+  id: string
+  name: string
+  tables: number
+}
+
+interface AirtableTable {
+  id: string
+  name: string
+  records: number
+  baseId: string
+}
+
+interface AirtableData {
+  bases: AirtableBase[]
+  tables: AirtableTable[]
+}
+
+interface AirtableIntegrationProps {
+  user: string
+  org: string
+  integrationParams?: IntegrationParams
+  setIntegrationParams: (params: IntegrationParams) => void
+}
+
+export const AirtableIntegration = ({
+  user,
+  org,
+  integrationParams,
+  setIntegrationParams,
+}: AirtableIntegrationProps) => {
   const [isConnected, setIsConnected] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [workspace, setWorkspace] = useState<AirtableWorkspace | null>(null)
-  const { toast } = useToast()
+  const [airtableData, setAirtableData] = useState<AirtableData | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const status: IntegrationStatus = await getIntegrationStatus('airtable', userId)
-        setIsConnected(status.isConnected)
-
-        if (status.isConnected && status.credentials?.workspaceId) {
-          const bases = await getAirtableBases(status.credentials.workspaceId)
-          setWorkspace({
-            id: status.credentials.workspaceId,
-            name: 'Airtable Workspace',
-            bases
-          })
-        }
-
-        if (status.error) {
-          setError(status.error)
-        }
-      } catch (error) {
-        console.error('Error checking Airtable status:', error)
-        setError('Failed to check integration status')
-      } finally {
-        setIsLoading(false)
-      }
+  const handleConnectClick = async () => {
+    if (!user || !org) {
+      alert("Missing user or organization ID")
+      return
     }
 
-    checkStatus()
-  }, [userId])
-
-  const handleConnect = async () => {
     try {
       setIsConnecting(true)
-      setError(null)
-
-      const authUrl = await authorizeIntegration('airtable', userId, orgId)
-
-      const width = 600
-      const height = 700
-      const left = window.screenX + (window.outerWidth - width) / 2
-      const top = window.screenY + (window.outerHeight - height) / 2
-
-      const authWindow = window.open(
-        authUrl,
-        'Airtable Authorization',
-        `width=${width},height=${height},left=${left},top=${top}`
+      const response = await axios.post<AuthResponse>(
+        `/api/integrations/airtable/authorize`,
+        { userId: user, orgId: org },
+        { headers: { "Content-Type": "application/json" } },
       )
 
-      window.addEventListener('message', async (event) => {
-        if (event.data.type === 'airtable-oauth-callback') {
-          if (event.data.success) {
-            setIsConnected(true)
-            toast({
-              title: "Connected successfully",
-              description: "Successfully connected to Airtable",
-            })
+      if (!response.data?.url) {
+        throw new Error("Invalid authorization URL")
+      }
 
-            const bases = await getAirtableBases(event.data.workspaceId)
-            setWorkspace({
-              id: event.data.workspaceId,
-              name: 'Airtable Workspace',
-              bases
-            })
-          } else {
-            setError('Failed to connect to Airtable')
-            toast({
-              title: "Connection failed",
-              description: event.data.error || "Failed to connect to Airtable",
-              variant: "destructive",
-            })
-          }
-          authWindow?.close()
+      const newWindow = window.open(
+        response.data.url,
+        "Airtable Authorization",
+        "width=600,height=600,menubar=no,toolbar=no",
+      )
+
+      if (!newWindow) {
+        throw new Error("Popup was blocked. Please allow popups and try again.")
+      }
+
+      // Listen for message from popup
+      const messageHandler = (event: MessageEvent) => {
+        if (event.data.type === "AIRTABLE_AUTH_SUCCESS") {
+          window.removeEventListener("message", messageHandler)
+          handleAuthSuccess()
+        } else if (event.data.type === "AIRTABLE_AUTH_ERROR") {
+          window.removeEventListener("message", messageHandler)
+          handleAuthError(event.data.error)
         }
-      })
+      }
+
+      window.addEventListener("message", messageHandler)
+
+      // Also poll for window close in case message isn't received
+      const pollTimer = window.setInterval(() => {
+        if (newWindow.closed) {
+          window.clearInterval(pollTimer)
+          window.removeEventListener("message", messageHandler)
+          handleAuthSuccess() // Assume success if window closed normally
+        }
+      }, 200)
+    } catch (e) {
+      setIsConnecting(false)
+      const error = e as AxiosError<ErrorResponse>
+      console.error("Authorization error:", error)
+      alert(error.response?.data?.detail || "Failed to connect to Airtable")
+    }
+  }
+
+  const handleAuthSuccess = async () => {
+    try {
+      // Verify the connection immediately
+      const status = await getIntegrationStatus("airtable", user, org)
+      if (status.isConnected) {
+        setIsConnected(true)
+        setIntegrationParams({
+          credentials: status.credentials,
+          type: "Airtable",
+        })
+        await fetchAirtableData(status.credentials)
+      } else {
+        throw new Error("Connection verification failed")
+      }
     } catch (error) {
-      console.error('Error connecting to Airtable:', error)
-      setError('Failed to initiate Airtable connection')
-      toast({
-        title: "Connection failed",
-        description: "Failed to connect to Airtable",
-        variant: "destructive",
-      })
+      console.error("Error verifying connection:", error)
+      handleAuthError(error instanceof Error ? error.message : "Failed to verify connection")
     } finally {
       setIsConnecting(false)
     }
   }
 
-  const handleDisconnect = async () => {
-    try {
-      await disconnectIntegration('airtable', userId)
-      setIsConnected(false)
-      setWorkspace(null)
-      toast({
-        title: "Disconnected",
-        description: "Successfully disconnected from Airtable",
-      })
-    } catch (error) {
-      console.error('Error disconnecting from Airtable:', error)
-      toast({
-        title: "Error",
-        description: "Failed to disconnect from Airtable",
-        variant: "destructive",
-      })
-    }
+  const handleAuthError = (error: string) => {
+    console.error("Authentication error:", error)
+    alert(`Failed to connect to Airtable: ${error}`)
+    setIsConnecting(false)
   }
 
-  const handleSync = async () => {
+  const fetchAirtableData = async (credentials?: any) => {
+    const creds = credentials || integrationParams?.credentials
+    if (!creds) return
+
     try {
-      setIsSyncing(true)
-      await syncIntegrationData('airtable', userId)
+      setIsLoading(true)
+      const items = await getIntegrationData("airtable", creds, user, org)
 
-      if (workspace) {
-        const bases = await getAirtableBases(workspace.id)
-        setWorkspace({
-          ...workspace,
-          bases
-        })
-      }
+      // Process the items into bases and tables
+      const basesMap: Record<string, AirtableBase> = {}
+      const tables: AirtableTable[] = []
 
-      toast({
-        title: "Sync complete",
-        description: "Successfully synced Airtable data",
+      items.forEach((item: IntegrationItem) => {
+        const getParam = (name: string) => {
+          const param = item.parameters.find((p: IntegrationParameter) => p.name === name)
+          return param ? param.value : ""
+        }
+
+        if (item.type === "base") {
+          basesMap[item.id] = {
+            id: item.id,
+            name: item.name,
+            tables: Number.parseInt(getParam("tables")) || 0,
+          }
+        } else if (item.type === "table") {
+          tables.push({
+            id: item.id,
+            name: item.name,
+            records: Number.parseInt(getParam("records")) || 0,
+            baseId: getParam("base_id"),
+          })
+        }
+      })
+
+      setAirtableData({
+        bases: Object.values(basesMap),
+        tables,
       })
     } catch (error) {
-      console.error('Error syncing Airtable data:', error)
-      toast({
-        title: "Sync failed",
-        description: "Failed to sync Airtable data",
-        variant: "destructive",
-      })
+      console.error("Failed to fetch Airtable data:", error)
+      alert("Failed to fetch Airtable data")
     } finally {
-      setIsSyncing(false)
+      setIsLoading(false)
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-6">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
-    )
+  useEffect(() => {
+    if (integrationParams?.credentials) {
+      setIsConnected(true)
+      fetchAirtableData()
+    }
+  }, [integrationParams])
+
+  const getTablesByBase = (baseId: string) => {
+    return airtableData?.tables.filter((table) => table.baseId === baseId) || []
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Airtable Integration</h3>
-        <p className="text-sm text-muted-foreground">
-          Connect to your Airtable workspace to access and sync your bases.
-        </p>
-      </div>
-
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
-
-      <div className="flex gap-4">
+    <div className="mt-4">
+      <h3 className="mb-4">Airtable Integration</h3>
+      <div className="flex flex-col items-center gap-4">
         <Button
-          onClick={isConnected ? handleDisconnect : handleConnect}
-          disabled={isConnecting || isSyncing}
           variant={isConnected ? "outline" : "default"}
+          onClick={isConnected ? undefined : handleConnectClick}
+          disabled={isConnecting}
+          className={isConnected ? "cursor-default opacity-100" : ""}
         >
-          {isConnected ? (
-            <>
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Disconnect Airtable
-            </>
-          ) : isConnecting ? (
+          {isConnecting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Connecting...
             </>
+          ) : isConnected ? (
+            "Connected to Airtable"
           ) : (
             "Connect to Airtable"
           )}
         </Button>
 
-        {isConnected && (
-          <Button
-            onClick={handleSync}
-            disabled={isSyncing}
-            variant="outline"
-          >
-            {isSyncing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Syncing...
-              </>
+        {isConnected && airtableData && (
+          <div className="w-full">
+            {airtableData.bases.length > 0 ? (
+              airtableData.bases.map((base) => (
+                <div key={base.id} className="mb-6">
+                  <h4 className="font-medium mb-2">{base.name}</h4>
+                  <div className="space-y-2 pl-4">
+                    {getTablesByBase(base.id).length > 0 ? (
+                      getTablesByBase(base.id).map((table) => (
+                        <div key={table.id} className="p-2 border rounded">
+                          <p className="font-medium">{table.name}</p>
+                          <p className="text-sm text-gray-500">{table.records} records</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-gray-500">No tables found</p>
+                    )}
+                  </div>
+                </div>
+              ))
             ) : (
-              "Sync Data"
+              <p className="text-center text-gray-500">No bases found</p>
             )}
-          </Button>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
         )}
       </div>
-
-      {workspace && workspace.bases.length > 0 && (
-        <div className="border rounded-lg p-4">
-          <h4 className="font-medium mb-2">Connected Bases</h4>
-          <div className="space-y-2">
-            {workspace.bases.map(base => (
-              <div key={base.id} className="flex justify-between text-sm p-2 bg-muted/50 rounded">
-                <span>{base.name}</span>
-                <span className="text-muted-foreground">
-                  Last modified: {new Date(base.last_modified_time).toLocaleDateString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
