@@ -121,6 +121,7 @@ interface IntegrationCredentials {
   [key: string]: any;
 }
 
+<<<<<<< Updated upstream
 // Integration API Methods
 import axios from 'axios';
 
@@ -224,4 +225,50 @@ export async function getHubspotContacts(workspaceId: string): Promise<HubSpotCo
   }
 
   return response.json();
+=======
+// Get integration data
+export async function getIntegrationData(
+  integrationType: string,
+  credentials: any,
+  userId: string,
+  orgId?: string,
+): Promise<any> {
+  try {
+    // Extract access token and ensure proper credentials structure
+    let accessToken = null;
+    let processedCredentials = null;
+
+    if (typeof credentials === 'string') {
+      try {
+        processedCredentials = JSON.parse(credentials);
+      } catch (e) {
+        processedCredentials = { access_token: credentials };
+      }
+    } else if (credentials.credentials?.access_token) {
+      // Handle nested credentials structure
+      processedCredentials = {
+        access_token: credentials.credentials.access_token,
+        ...credentials.credentials
+      };
+    } else if (credentials.access_token) {
+      // Handle flat credentials structure
+      processedCredentials = credentials;
+    } else {
+      throw new Error('Invalid credentials format');
+    }
+
+    // Make the API request with processed credentials
+    const response = await axios.post(`/api/integrations/${integrationType}/data`, {
+      credentials: processedCredentials,
+      userId,
+      orgId,
+    })
+
+    return response.data
+  } catch (error) {
+    console.error(`Error getting ${integrationType} data:`, error)
+    const errorMessage = error instanceof Error ? error.message : `Failed to get ${integrationType} data`;
+    throw new Error(errorMessage)
+  }
+>>>>>>> Stashed changes
 }

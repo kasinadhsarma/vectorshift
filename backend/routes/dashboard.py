@@ -4,6 +4,7 @@ from typing import Dict, List
 from datetime import datetime, timedelta
 from cassandra_client import CassandraClient
 from redis_client import get_value_redis
+import json
 
 router = APIRouter()
 security = HTTPBearer()
@@ -18,6 +19,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # Parse JSON string if needed
+    if isinstance(user_data, str):
+        try:
+            user_data = json.loads(user_data)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=500,
+                detail="Invalid user data format"
+            )
     return user_data
 
 @router.get("/api/users/{hashed_id}/dashboard")
@@ -25,7 +35,11 @@ async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_cu
     """Get user-specific dashboard data"""
     try:
         # Get original user ID from email
+        if not isinstance(current_user, dict):
+            raise HTTPException(status_code=500, detail="Invalid user data format")
+            
         original_user_id = current_user.get("email", "").split("@")[0]
+        
         # Check if hashed ID matches
         if hashed_id != cassandra.hash_user_id(original_user_id):
             raise HTTPException(status_code=403, detail="Not authorized to access this dashboard")
@@ -36,27 +50,26 @@ async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_cu
         # Calculate statistics
         now = datetime.now()
         total_integrations = len(integrations)
-        active_integrations = sum(1 for i in integrations if i["status"] == "active")
+        active_integrations = sum(1 for i in integrations if i.get("status") == "active")
         
-        # Get last month's data (mock data for now)
-        last_month_total = total_integrations - 2
-        last_month_active = active_integrations - 1
+        # Get last month's data
+        last_month_total = max(0, total_integrations - 2)  # Ensure non-negative
+        last_month_active = max(0, active_integrations - 1)  # Ensure non-negative
         
-        # Get sync data (mock data for now)
-        total_syncs = 28
-        last_week_syncs = 20
+        # Get sync data
+        total_syncs = 28  # Mock data
+        last_week_syncs = 20  # Mock data
         
         # Format active integrations for frontend
-        formatted_integrations = [
-            {
-                "name": integration["name"],
-                "status": integration["status"],
-                "lastSync": integration["last_sync"].isoformat() if integration.get("last_sync") else None,
-                "details": f"{integration.get('workspace_count', 0)} workspaces"
-            }
-            for integration in integrations
-            if integration["status"] == "active"
-        ]
+        formatted_integrations = []
+        for integration in integrations:
+            if integration.get("status") == "active":
+                formatted_integrations.append({
+                    "name": integration.get("name", "Unknown"),
+                    "status": integration.get("status", "inactive"),
+                    "lastSync": integration.get("last_sync", now).isoformat() if integration.get("last_sync") else now.isoformat(),
+                    "details": f"{integration.get('workspace_count', 0)} workspaces"
+                })
         
         return {
             "integrations": {
@@ -74,15 +87,21 @@ async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_cu
         }
         
     except Exception as e:
+<<<<<<< Updated upstream
+=======
+        print(f"Error in get_user_dashboard: {str(e)}")
+>>>>>>> Stashed changes
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard data: {str(e)}")
 
 @router.post("/api/users/{hashed_id}/dashboard/refresh")
 async def refresh_dashboard_data(hashed_id: str, current_user: Dict = Depends(get_current_user)):
     """Refresh user's dashboard data"""
     try:
-        # Get original user ID from email
+        if not isinstance(current_user, dict):
+            raise HTTPException(status_code=500, detail="Invalid user data format")
+            
         original_user_id = current_user.get("email", "").split("@")[0]
-        # Check if hashed ID matches
+        
         if hashed_id != cassandra.hash_user_id(original_user_id):
             raise HTTPException(status_code=403, detail="Not authorized to refresh this dashboard")
             

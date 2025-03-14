@@ -46,10 +46,47 @@ export default function NotionIntegrationPage() {
   const userId = "user123"
   const orgId = "org456"
 
+<<<<<<< Updated upstream
   const fetchData = async () => {
+=======
+  useEffect(() => {
+    // Check connection status on load
+    const checkConnection = async () => {
+      try {
+        const status = await getIntegrationStatus("notion", userId, orgId)
+        setIsConnected(status.isConnected)
+        if (status.isConnected && status.credentials) {
+          // Store the credentials in the correct format
+          const processedCreds = status.credentials.credentials || status.credentials
+          setIntegrationParams({
+            credentials: {
+              access_token: processedCreds.access_token,
+              ...processedCreds
+            },
+            type: "Notion",
+          })
+        }
+      } catch (error) {
+        console.error("Error checking connection:", error)
+      }
+    }
+
+    checkConnection()
+  }, [userId, orgId])
+
+  const fetchData = async () => {
+    if (!integrationParams?.credentials) {
+      console.error("No credentials available")
+      setError("No credentials available")
+      return
+    }
+
+>>>>>>> Stashed changes
     setIsLoading(true)
     setError(null)
+    
     try {
+<<<<<<< Updated upstream
       const status = await getIntegrationStatus("notion", userId, orgId)
       setIsConnected(status.isConnected)
       setData(status)
@@ -57,6 +94,19 @@ export default function NotionIntegrationPage() {
       if (!status.isConnected) {
         throw new Error("Notion is not connected")
       }
+=======
+      console.log("Fetching Notion data with credentials:", {
+        ...integrationParams.credentials,
+        access_token: integrationParams.credentials.access_token ? "[REDACTED]" : "MISSING"
+      })
+
+      const notionData = await getIntegrationData(
+        "notion", 
+        integrationParams.credentials,
+        userId, 
+        orgId
+      )
+>>>>>>> Stashed changes
 
       if (status.status !== "active") {
         await syncIntegrationData("notion", userId, orgId)

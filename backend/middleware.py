@@ -16,8 +16,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/auth/google/callback",
             "/auth/login",
             "/auth/signup",
-            "/auth/google/url",  # ✅ Add this line
-            "/api/integrations/notion/oauth2callback",
+            "/auth/google/url",
+            "/api/integrations/notion/oauth2callback",  # Updated path
             "/api/integrations/airtable/oauth2callback",
             "/api/integrations/slack/oauth2callback",
             "/api/integrations/hubspot/oauth2callback",
@@ -52,6 +52,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             # Add user data to request state
             request.state.user = user_data
+            
+            response = await call_next(request)
+            return response
 
         except jwt.ExpiredSignatureError:
             raise HTTPException(
@@ -59,15 +62,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 detail="Token has expired",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        except jwt.InvalidTokenError:
+        except jwt.JWTError:
             raise HTTPException(
                 status_code=401,
                 detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-
-        response = await call_next(request)
-        return response
 
 def add_cors_middleware(app):
     """Add CORS middleware with configuration"""
@@ -76,7 +76,7 @@ def add_cors_middleware(app):
         allow_origins=[
             "http://localhost:3000",  # Next.js frontend
             "http://localhost:8000",  # Backend
-            "https://accounts.google.com",  # Google OAuth
+            "https://api.notion.com",  # Notion API
             "null",  # Allow requests from popup windows
         ],
         allow_credentials=True,

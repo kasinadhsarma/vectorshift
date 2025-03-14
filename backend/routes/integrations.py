@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 from fastapi import Request, APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer
 from typing import Dict, Callable, Any
@@ -23,6 +24,16 @@ from redis_client import get_value_redis, delete_key_redis
 router = APIRouter()
 security = HTTPBearer()
 cassandra = CassandraClient()
+=======
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from typing import Dict, Optional, List
+from pydantic import BaseModel
+from integrations import notion, airtable, hubspot, slack
+import logging
+
+router = APIRouter(prefix="/api/integrations")  # Updated prefix to include /api
+logger = logging.getLogger(__name__)
+>>>>>>> Stashed changes
 
 # Provider mapping for OAuth integrations
 PROVIDER_MAP = {
@@ -56,6 +67,7 @@ async def get_current_user(token: str = Depends(security)):
     """Mock authentication for development."""
     return {"id": "mock_user"}
 
+<<<<<<< Updated upstream
 def get_provider_functions(provider: str) -> Dict[str, Callable]:
     """Retrieve provider-specific OAuth functions."""
     if provider not in PROVIDER_MAP:
@@ -83,6 +95,84 @@ async def authorize_integration(provider: str, request: Request):
             raise HTTPException(status_code=400, detail="Missing user_id/org_id")
 
         auth_url = await provider_funcs["authorize"](user_id, org_id)
+=======
+class DataRequest(BaseModel):
+    userId: str
+    orgId: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+        alias_generator = lambda string: string.replace('Id', '_id')
+
+# Notion routes
+@router.post("/notion/authorize")
+async def authorize_notion_route(request: AuthorizeRequest):
+    try:
+        logger.info(f"Authorizing Notion for user {request.userId} in org {request.orgId}")
+        response = await notion.authorize_notion(request.userId, request.orgId)
+        logger.info("Authorization URL generated successfully")
+        return response
+    except Exception as e:
+        logger.error(f"Error authorizing Notion: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/notion/oauth2callback")
+async def notion_callback_route(request: Request):
+    try:
+        logger.info("Processing Notion OAuth callback")
+        return await notion.oauth2callback_notion(request)
+    except Exception as e:
+        logger.error(f"Error in Notion OAuth callback: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/notion/status")
+async def get_notion_status(
+    userId: str = Query(...),
+    orgId: str = Query(None)
+):
+    try:
+        logger.info(f"Checking Notion status for user {userId} in org {orgId}")
+        credentials = await notion.get_notion_credentials(userId, orgId)
+        return {
+            "isConnected": credentials is not None,
+            "status": "active" if credentials else "inactive",
+            "credentials": credentials
+        }
+    except Exception as e:
+        logger.error(f"Error checking Notion status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/notion/data")
+async def get_notion_data_route(request: DataRequest):
+    try:
+        logger.info(f"Fetching Notion data for user {request.userId} in org {request.orgId}")
+        
+        # Get credentials from Redis
+        credentials = await notion.get_notion_credentials(request.userId, request.orgId)
+        if not credentials:
+            logger.error("No credentials found")
+            raise HTTPException(
+                status_code=401,
+                detail="No credentials found. Please reconnect to Notion."
+            )
+            
+        # Fetch data using the stored credentials
+        data = await notion.get_notion_data(credentials)
+        return data
+    except notion.NotionError as e:
+        # Handle specific Notion API errors
+        logger.error(f"Notion API error: {e.code} - {e.message}")
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+    except Exception as e:
+        logger.error(f"Error fetching Notion data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Airtable routes
+@router.post("/airtable/authorize")
+async def authorize_airtable(request: AuthorizeRequest):
+    try:
+        auth_url = await airtable.authorize_airtable(request.userId, request.orgId)
+>>>>>>> Stashed changes
         return {"url": auth_url}
     
     except Exception as e:
