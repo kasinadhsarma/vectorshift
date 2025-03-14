@@ -26,7 +26,6 @@ AUTHORIZATION_URL = 'https://airtable.com/oauth2/v1/authorize'
 TOKEN_URL = 'https://airtable.com/oauth2/v1/token'
 API_URL = 'https://api.airtable.com/v0/meta'
 
-<<<<<<< HEAD
 # Pre-encode client credentials
 encoded_client_id_secret = base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode()
 
@@ -128,7 +127,7 @@ async def oauth2callback_airtable(request: Request):
         # Verify stored state and get code verifier
         saved_state, code_verifier = await asyncio.gather(
             get_value_redis(f'airtable_state:{org_id}:{user_id}'),
-            get_value_redis(f'airtable_verifier:{org_id}:{user_id}'),
+            get_value_redis(f'airtable_verifier:{org_id}:{user_id}')
         )
         
         if not saved_state:
@@ -145,97 +144,17 @@ async def oauth2callback_airtable(request: Request):
             logger.info("Exchanging code for access token")
             
             response = await client.post(
-=======
-async def authorize_airtable(user_id, org_id):
-    state = secrets.token_urlsafe(32)
-    code_verifier = secrets.token_urlsafe(32)
-    
-    # Generate code challenge using the verifier
-    import base64
-    import hashlib
-    code_challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(code_verifier.encode('utf-8')).digest()
-    ).decode('utf-8').rstrip('=')
-    
-    state_data = {
-        'state': state,
-        'user_id': user_id,
-        'org_id': org_id,
-        'code_verifier': code_verifier
-    }
-    encoded_state = json.dumps(state_data)
-    await add_key_value_redis(f'airtable_state:{org_id}:{user_id}', encoded_state, expire=600)
-    
-    scopes = [
-        'data.records:read',
-        'data.records:write',
-        'schema.bases:read',
-        'schema.bases:write'
-    ]
-    
-    auth_url = (
-        f'{AUTHORIZATION_URL}'
-        f'?client_id={CLIENT_ID}'
-        f'&redirect_uri={REDIRECT_URI}'
-        f'&response_type=code'
-        f'&state={state}'
-        f'&scope={" ".join(scopes)}'
-        f'&code_challenge={code_challenge}'
-        f'&code_challenge_method=S256'
-    )
-    return {"url": auth_url}
-
-async def oauth2callback_airtable(request: Request):
-    if request.query_params.get('error'):
-        raise HTTPException(
-            status_code=400,
-            detail=request.query_params.get('error_description', 'OAuth error')
-        )
-    
-    code = request.query_params.get('code')
-    state = request.query_params.get('state')
-    
-    # First get the saved state by state parameter
-    saved_state = await get_value_redis(f'airtable_state:{state}')
-    if not saved_state:
-        raise HTTPException(status_code=400, detail='State not found')
-        
-    try:
-        state_data = json.loads(saved_state)
-        user_id = state_data.get('user_id')
-        org_id = state_data.get('org_id')
-        code_verifier = state_data.get('code_verifier')
-        
-        if not all([user_id, org_id, code_verifier]):
-            raise HTTPException(status_code=400, detail='Missing required state data')
-            
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail='Invalid state data format')
-
-    saved_state = await get_value_redis(f'airtable_state:{org_id}:{user_id}')
-    if not saved_state or state != json.loads(saved_state).get('state'):
-        raise HTTPException(status_code=400, detail='State mismatch')
-
-    async with httpx.AsyncClient() as client:
-        response, _ = await asyncio.gather(
-            client.post(
->>>>>>> origin/main
                 TOKEN_URL,
                 data={
                     'grant_type': 'authorization_code',
                     'code': code,
                     'redirect_uri': REDIRECT_URI,
                     'client_id': CLIENT_ID,
-<<<<<<< HEAD
-                    'code_verifier': code_verifier,
+                    'code_verifier': code_verifier
                 },
                 headers={
                     'Authorization': f'Basic {encoded_client_id_secret}',
-                    'Content-Type': 'application/x-www-form-urlencoded',
-=======
-                    'client_secret': CLIENT_SECRET,
-                    'code_verifier': code_verifier
->>>>>>> origin/main
+                    'Content-Type': 'application/x-www-form-urlencoded'
                 }
             )
             
@@ -250,7 +169,8 @@ async def oauth2callback_airtable(request: Request):
             credentials = response.json()
             await add_key_value_redis(
                 f'airtable_credentials:{org_id}:{user_id}',
-                json.dumps(credentials)
+                json.dumps(credentials),
+                expire=credentials.get('expires_in', 7200)
             )
             
             logger.info("Successfully stored credentials")
@@ -298,7 +218,6 @@ async def oauth2callback_airtable(request: Request):
             </html>
         """)
 
-<<<<<<< HEAD
 async def get_airtable_credentials(user_id: str, org_id: str) -> Optional[Dict[str, Any]]:
     """Get stored Airtable credentials"""
     try:
@@ -315,123 +234,26 @@ async def get_airtable_credentials(user_id: str, org_id: str) -> Optional[Dict[s
         logger.error(f"Error getting credentials: {str(e)}")
         return None
 
-def create_integration_item_metadata_object(
-    response_json: Dict,
-    item_type: str,
-    parent_id: Optional[str] = None,
-    parent_name: Optional[str] = None
-) -> IntegrationItem:
-    """Creates an integration metadata object from the response"""
-    parent_id = f"{parent_id}_Base" if parent_id else None
-    
-    return IntegrationItem(
-        id=f"{response_json.get('id', '')}_" + item_type,
-        name=response_json.get('name', 'Untitled'),
-        type=item_type,
-        parent_id=parent_id,
-        parent_path_or_name=parent_name,
-        creation_time=response_json.get('createdTime'),
-        last_modified_time=response_json.get('modifiedTime')
-    )
-
-async def get_items_airtable(credentials: Dict[str, Any]) -> List[IntegrationItem]:
-    """Aggregates all metadata relevant for an Airtable integration"""
+async def get_items_airtable(credentials: Dict[str, Any]) -> Dict[str, Any]:
+    """Get enhanced data from Airtable including bases, tables, and workspace info"""
     try:
         # Handle both string and dict credentials
         if isinstance(credentials, str):
-            credentials = json.loads(credentials)
+            try:
+                credentials = json.loads(credentials)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail='Invalid credentials format')
         
         access_token = credentials.get('access_token')
         if not access_token:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid credentials: missing access token"
-            )
+            raise HTTPException(status_code=401, detail="Missing access token")
             
-        headers = {'Authorization': f'Bearer {access_token}'}
-        items: List[IntegrationItem] = []
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
         
-        # Fetch bases
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f'{API_URL}/bases', headers=headers)
-            
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail="Failed to fetch Airtable bases"
-                )
-                
-            bases_data = response.json()
-            
-            # Process bases and their tables
-            for base in bases_data.get('bases', []):
-                # Add base
-                items.append(create_integration_item_metadata_object(base, 'Base'))
-                
-                # Fetch and add tables for this base
-                tables_response = await client.get(
-                    f'{API_URL}/bases/{base["id"]}/tables',
-                    headers=headers
-                )
-                
-                if tables_response.status_code == 200:
-                    tables_data = tables_response.json()
-                    for table in tables_data.get('tables', []):
-                        items.append(
-                            create_integration_item_metadata_object(
-                                table,
-                                'Table',
-                                base.get('id'),
-                                base.get('name')
-                            )
-                        )
-                        
-            logger.info(f"Retrieved {len(items)} Airtable items")
-            return items
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting Airtable items: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get Airtable items: {str(e)}"
-        )
-=======
-        token_data = response.json()
-        await add_key_value_redis(
-            f'airtable_credentials:{org_id}:{user_id}',
-            json.dumps(token_data),
-            expire=token_data.get('expires_in', 7200)
-        )
-    
-    return HTMLResponse(content="<html><script>window.close();</script></html>")
-
-async def get_airtable_credentials(user_id: str, org_id: str) -> dict:
-    """Get Airtable credentials using the standardized credentials function."""
-    from redis_client import get_credentials
-    return await get_credentials('airtable', user_id, org_id)
-
-async def get_items_airtable(credentials) -> dict:
-    """Get enhanced data from Airtable including bases, tables, and workspace info"""
-    # Ensure credentials is a dict
-    if isinstance(credentials, str):
-        try:
-            credentials = json.loads(credentials)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail='Invalid credentials format')
-    
-    access_token = credentials.get('access_token')
-    if not access_token:
-        raise HTTPException(status_code=400, detail='Missing access token')
-
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
-    }
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             # Make parallel requests for bases and workspace info
             responses = await asyncio.gather(
                 client.get(f'{API_URL}/bases', headers=headers),
@@ -445,7 +267,7 @@ async def get_items_airtable(credentials) -> dict:
                 if resp.status_code != 200:
                     error_msg = f'Airtable API error: {resp.text}'
                     raise HTTPException(status_code=resp.status_code, detail=error_msg)
-                
+                    
                 try:
                     resp.json()
                 except json.JSONDecodeError:
@@ -482,21 +304,29 @@ async def get_items_airtable(credentials) -> dict:
                 })
                 
                 # Process tables with enhanced metadata
-                for table in base.get('tables', []):
-                    tables.append({
-                        'id': table.get('id'),
-                        'name': table.get('name', 'Untitled Table'),
-                        'type': 'table',
-                        'url': f"https://airtable.com/{base.get('id')}/{table.get('id')}",
-                        'created_time': table.get('createdTime'),
-                        'modified_time': table.get('modifiedTime'),
-                        'primary_field_id': table.get('primaryFieldId'),
-                        'fields_count': len(table.get('fields', [])),
-                        'description': table.get('description', ''),
-                        'base_id': base.get('id'),
-                        'workspace_id': base.get('workspaceId')
-                    })
+                tables_response = await client.get(
+                    f'{API_URL}/bases/{base["id"]}/tables',
+                    headers=headers
+                )
+                
+                if tables_response.status_code == 200:
+                    tables_data = tables_response.json()
+                    for table in tables_data.get('tables', []):
+                        tables.append({
+                            'id': table.get('id'),
+                            'name': table.get('name', 'Untitled Table'),
+                            'type': 'table',
+                            'url': f"https://airtable.com/{base.get('id')}/{table.get('id')}",
+                            'created_time': table.get('createdTime'),
+                            'modified_time': table.get('modifiedTime'),
+                            'primary_field_id': table.get('primaryFieldId'),
+                            'fields_count': len(table.get('fields', [])),
+                            'description': table.get('description', ''),
+                            'base_id': base.get('id'),
+                            'workspace_id': base.get('workspaceId')
+                        })
             
+            logger.info(f"Retrieved {len(workspaces)} workspaces, {len(bases)} bases, and {len(tables)} tables")
             return {
                 'isConnected': True,
                 'status': 'active',
@@ -506,14 +336,11 @@ async def get_items_airtable(credentials) -> dict:
                 'credentials': credentials
             }
             
-        except httpx.RequestError as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f'Failed to connect to Airtable API: {str(e)}'
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f'Error fetching Airtable data: {str(e)}'
-            )
->>>>>>> origin/main
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting Airtable items: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get Airtable items: {str(e)}"
+        )
