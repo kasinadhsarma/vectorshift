@@ -87,10 +87,7 @@ async def get_user_dashboard(hashed_id: str, current_user: Dict = Depends(get_cu
         }
         
     except Exception as e:
-<<<<<<< Updated upstream
-=======
         print(f"Error in get_user_dashboard: {str(e)}")
->>>>>>> Stashed changes
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard data: {str(e)}")
 
 @router.post("/api/users/{hashed_id}/dashboard/refresh")

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
+import { useState, useEffect } from "react"
+import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
@@ -21,8 +21,10 @@ interface NotionDatabase {
   items: number
 }
 
+import { NotionCredentials } from "@/app/components/integrations/types"
+
 interface IntegrationParams {
-  credentials?: Record<string, any>
+  credentials?: NotionCredentials
   type?: string
 }
 
@@ -46,11 +48,8 @@ export default function NotionIntegrationPage() {
   const userId = "user123"
   const orgId = "org456"
 
-<<<<<<< Updated upstream
-  const fetchData = async () => {
-=======
+  // Check connection status on mount
   useEffect(() => {
-    // Check connection status on load
     const checkConnection = async () => {
       try {
         const status = await getIntegrationStatus("notion", userId, orgId)
@@ -65,9 +64,11 @@ export default function NotionIntegrationPage() {
             },
             type: "Notion",
           })
+          setData(status)
         }
       } catch (error) {
         console.error("Error checking connection:", error)
+        setError(error instanceof Error ? error.message : "Failed to check connection status")
       }
     }
 
@@ -75,43 +76,44 @@ export default function NotionIntegrationPage() {
   }, [userId, orgId])
 
   const fetchData = async () => {
-    if (!integrationParams?.credentials) {
-      console.error("No credentials available")
-      setError("No credentials available")
-      return
-    }
-
->>>>>>> Stashed changes
     setIsLoading(true)
     setError(null)
     
     try {
-<<<<<<< Updated upstream
+      // First check/update connection status
       const status = await getIntegrationStatus("notion", userId, orgId)
       setIsConnected(status.isConnected)
-      setData(status)
-      
+
       if (!status.isConnected) {
         throw new Error("Notion is not connected")
       }
-=======
-      console.log("Fetching Notion data with credentials:", {
-        ...integrationParams.credentials,
-        access_token: integrationParams.credentials.access_token ? "[REDACTED]" : "MISSING"
-      })
-
-      const notionData = await getIntegrationData(
-        "notion", 
-        integrationParams.credentials,
-        userId, 
-        orgId
-      )
->>>>>>> Stashed changes
 
       if (status.status !== "active") {
         await syncIntegrationData("notion", userId, orgId)
         const updatedStatus = await getIntegrationStatus("notion", userId, orgId)
-        setData(updatedStatus)
+        status.status = updatedStatus.status
+      }
+
+      // Then fetch the actual data if we have credentials
+      if (integrationParams?.credentials) {
+        console.log("Fetching Notion data with credentials:", {
+          ...integrationParams.credentials,
+          access_token: "[REDACTED]"
+        })
+
+        const notionData = await getIntegrationData(
+          "notion", 
+          integrationParams.credentials,
+          userId, 
+          orgId
+        )
+
+        setData({
+          ...status,
+          ...notionData
+        })
+      } else {
+        setData(status)
       }
     } catch (err) {
       console.error("Error fetching data:", err)
@@ -180,6 +182,9 @@ export default function NotionIntegrationPage() {
                     "Load Notion Data"
                   )}
                 </Button>
+                {error && (
+                  <p className="text-sm text-destructive">{error}</p>
+                )}
               </div>
             ) : (
               <div className="text-center py-4">

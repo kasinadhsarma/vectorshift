@@ -17,10 +17,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/auth/login",
             "/auth/signup",
             "/auth/google/url",
-            "/api/integrations/notion/oauth2callback",  # Updated path
+            "/api/integrations/notion/oauth2callback",
             "/api/integrations/airtable/oauth2callback",
             "/api/integrations/slack/oauth2callback",
             "/api/integrations/hubspot/oauth2callback",
+            "/integrations/notion/oauth2callback",
+            "/integrations/airtable/oauth2callback",
+            "/integrations/slack/oauth2callback",
+            "/integrations/hubspot/oauth2callback",
             "/",
         ]
 
@@ -74,19 +78,24 @@ def add_cors_middleware(app):
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost:3000",  # Next.js frontend
+            "http://localhost:3000",  # Next.js frontend default port
+            "http://localhost:3001",  # Next.js frontend alternate port
             "http://localhost:8000",  # Backend
             "https://api.notion.com",  # Notion API
+            "http://127.0.0.1:3000",  # Local frontend alternative
+            "http://127.0.0.1:3001",  # Local frontend alternative
             "null",  # Allow requests from popup windows
         ],
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["*"],  # Allow all methods
         allow_headers=[
             "Content-Type",
             "Authorization",
             "Accept",
             "Origin",
-            "X-Requested-With"
+            "X-Requested-With",
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Credentials",
         ],
         expose_headers=["*"],
         max_age=3600,
@@ -94,5 +103,7 @@ def add_cors_middleware(app):
 
 def setup_middleware(app):
     """Setup all middleware"""
+    # Add CORS middleware first
     add_cors_middleware(app)
+    # Then add authentication middleware
     app.add_middleware(AuthMiddleware)

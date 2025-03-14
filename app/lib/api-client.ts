@@ -1,4 +1,5 @@
 // API Client for profile and integration operations
+import axios from 'axios';
 
 interface ProfileData {
   email: string;
@@ -12,6 +13,9 @@ interface ProfileData {
   updatedAt?: string;
 }
 
+const API_BASE_URL = 'http://localhost:8000/api';
+
+// Profile Management
 export async function getUserProfile(email: string): Promise<ProfileData> {
   const response = await fetch(`/api/users/${email}/profile`, {
     headers: {
@@ -45,7 +49,6 @@ export async function updateUserProfile(email: string, data: Partial<ProfileData
 }
 
 export async function uploadProfileImage(file: File): Promise<string> {
-  // Create FormData
   const formData = new FormData();
   formData.append('file', file);
 
@@ -121,12 +124,7 @@ interface IntegrationCredentials {
   [key: string]: any;
 }
 
-<<<<<<< Updated upstream
-// Integration API Methods
-import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:8000/api';
-
+// Generic Integration Methods
 export async function authorizeIntegration(provider: string, userId: string, orgId: string): Promise<string> {
   const response = await axios.post(`${API_BASE_URL}/integrations/${provider}/authorize`, {
     userId,
@@ -156,8 +154,49 @@ export async function syncIntegrationData(provider: string, userId: string, orgI
   });
 }
 
+export async function getIntegrationData(
+  integrationType: string,
+  credentials: any,
+  userId: string,
+  orgId?: string,
+): Promise<any> {
+  try {
+    // Extract access token and ensure proper credentials structure
+    let processedCredentials = null;
+
+    if (typeof credentials === 'string') {
+      try {
+        processedCredentials = JSON.parse(credentials);
+      } catch (e) {
+        processedCredentials = { access_token: credentials };
+      }
+    } else if (credentials.credentials?.access_token) {
+      processedCredentials = {
+        access_token: credentials.credentials.access_token,
+        ...credentials.credentials
+      };
+    } else if (credentials.access_token) {
+      processedCredentials = credentials;
+    } else {
+      throw new Error('Invalid credentials format');
+    }
+
+    const response = await axios.post(`${API_BASE_URL}/integrations/${integrationType}/data`, {
+      credentials: processedCredentials,
+      userId,
+      orgId,
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error(`Error getting ${integrationType} data:`, error);
+    const errorMessage = error instanceof Error ? error.message : `Failed to get ${integrationType} data`;
+    throw new Error(errorMessage);
+  }
+}
+
 // Integration-specific methods
-export async function getNotionPages(workspaceId: string): Promise<any[]> {
+export async function getNotionPages(workspaceId: string): Promise<NotionPage[]> {
   const response = await fetch(`/api/integrations/notion/pages?workspaceId=${workspaceId}`, {
     headers: {
       'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -225,50 +264,4 @@ export async function getHubspotContacts(workspaceId: string): Promise<HubSpotCo
   }
 
   return response.json();
-=======
-// Get integration data
-export async function getIntegrationData(
-  integrationType: string,
-  credentials: any,
-  userId: string,
-  orgId?: string,
-): Promise<any> {
-  try {
-    // Extract access token and ensure proper credentials structure
-    let accessToken = null;
-    let processedCredentials = null;
-
-    if (typeof credentials === 'string') {
-      try {
-        processedCredentials = JSON.parse(credentials);
-      } catch (e) {
-        processedCredentials = { access_token: credentials };
-      }
-    } else if (credentials.credentials?.access_token) {
-      // Handle nested credentials structure
-      processedCredentials = {
-        access_token: credentials.credentials.access_token,
-        ...credentials.credentials
-      };
-    } else if (credentials.access_token) {
-      // Handle flat credentials structure
-      processedCredentials = credentials;
-    } else {
-      throw new Error('Invalid credentials format');
-    }
-
-    // Make the API request with processed credentials
-    const response = await axios.post(`/api/integrations/${integrationType}/data`, {
-      credentials: processedCredentials,
-      userId,
-      orgId,
-    })
-
-    return response.data
-  } catch (error) {
-    console.error(`Error getting ${integrationType} data:`, error)
-    const errorMessage = error instanceof Error ? error.message : `Failed to get ${integrationType} data`;
-    throw new Error(errorMessage)
-  }
->>>>>>> Stashed changes
 }

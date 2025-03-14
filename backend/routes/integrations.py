@@ -1,7 +1,10 @@
-<<<<<<< Updated upstream
-from fastapi import Request, APIRouter, HTTPException, Depends
+"""Integration routes for OAuth providers."""
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.security import HTTPBearer
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Optional, Any
+from pydantic import BaseModel
+import logging
+
 from cassandra_client import CassandraClient
 from integrations.notion import (
     authorize_notion, oauth2callback_notion,
@@ -21,19 +24,12 @@ from integrations.hubspot import (
 )
 from redis_client import get_value_redis, delete_key_redis
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 security = HTTPBearer()
 cassandra = CassandraClient()
-=======
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
-from typing import Dict, Optional, List
-from pydantic import BaseModel
-from integrations import notion, airtable, hubspot, slack
-import logging
-
-router = APIRouter(prefix="/api/integrations")  # Updated prefix to include /api
-logger = logging.getLogger(__name__)
->>>>>>> Stashed changes
 
 # Provider mapping for OAuth integrations
 PROVIDER_MAP = {
@@ -63,40 +59,8 @@ PROVIDER_MAP = {
     }
 }
 
-async def get_current_user(token: str = Depends(security)):
-    """Mock authentication for development."""
-    return {"id": "mock_user"}
-
-<<<<<<< Updated upstream
-def get_provider_functions(provider: str) -> Dict[str, Callable]:
-    """Retrieve provider-specific OAuth functions."""
-    if provider not in PROVIDER_MAP:
-        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
-    return PROVIDER_MAP[provider]
-
-@router.post("/integrations/{provider}/authorize")
-async def authorize_integration(provider: str, request: Request):
-    """Generate OAuth authorization URL for the provider."""
-    try:
-        provider_funcs = get_provider_functions(provider)
-        
-        # Handle both JSON and form data
-        content_type = request.headers.get('content-type', '')
-        if 'application/json' in content_type:
-            body = await request.json()
-            user_id = body.get('userId')
-            org_id = body.get('orgId')
-        else:
-            form = await request.form()
-            user_id = form.get('user_id')
-            org_id = form.get('org_id')
-
-        if not user_id or not org_id:
-            raise HTTPException(status_code=400, detail="Missing user_id/org_id")
-
-        auth_url = await provider_funcs["authorize"](user_id, org_id)
-=======
-class DataRequest(BaseModel):
+class AuthorizeRequest(BaseModel):
+    """Request model for authorization endpoints."""
     userId: str
     orgId: Optional[str] = None
 
@@ -104,114 +68,69 @@ class DataRequest(BaseModel):
         populate_by_name = True
         alias_generator = lambda string: string.replace('Id', '_id')
 
-# Notion routes
-@router.post("/notion/authorize")
-async def authorize_notion_route(request: AuthorizeRequest):
+async def get_current_user(token: str = Depends(security)):
+    """Mock authentication for development."""
+    return {"id": "mock_user"}
+
+def get_provider_functions(provider: str) -> Dict[str, Callable]:
+    """Retrieve provider-specific OAuth functions."""
+    if provider not in PROVIDER_MAP:
+        raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
+    return PROVIDER_MAP[provider]
+
+@router.post("/integrations/{provider}/authorize")
+async def authorize_integration(provider: str, request: AuthorizeRequest):
+    """Generate OAuth authorization URL for the provider."""
     try:
-        logger.info(f"Authorizing Notion for user {request.userId} in org {request.orgId}")
-        response = await notion.authorize_notion(request.userId, request.orgId)
+        logger.info(f"Authorizing {provider} for user {request.userId} in org {request.orgId}")
+        provider_funcs = get_provider_functions(provider)
+        auth_url = await provider_funcs["authorize"](request.userId, request.orgId)
         logger.info("Authorization URL generated successfully")
-        return response
-    except Exception as e:
-        logger.error(f"Error authorizing Notion: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/notion/oauth2callback")
-async def notion_callback_route(request: Request):
-    try:
-        logger.info("Processing Notion OAuth callback")
-        return await notion.oauth2callback_notion(request)
-    except Exception as e:
-        logger.error(f"Error in Notion OAuth callback: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/notion/status")
-async def get_notion_status(
-    userId: str = Query(...),
-    orgId: str = Query(None)
-):
-    try:
-        logger.info(f"Checking Notion status for user {userId} in org {orgId}")
-        credentials = await notion.get_notion_credentials(userId, orgId)
-        return {
-            "isConnected": credentials is not None,
-            "status": "active" if credentials else "inactive",
-            "credentials": credentials
-        }
-    except Exception as e:
-        logger.error(f"Error checking Notion status: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/notion/data")
-async def get_notion_data_route(request: DataRequest):
-    try:
-        logger.info(f"Fetching Notion data for user {request.userId} in org {request.orgId}")
-        
-        # Get credentials from Redis
-        credentials = await notion.get_notion_credentials(request.userId, request.orgId)
-        if not credentials:
-            logger.error("No credentials found")
-            raise HTTPException(
-                status_code=401,
-                detail="No credentials found. Please reconnect to Notion."
-            )
-            
-        # Fetch data using the stored credentials
-        data = await notion.get_notion_data(credentials)
-        return data
-    except notion.NotionError as e:
-        # Handle specific Notion API errors
-        logger.error(f"Notion API error: {e.code} - {e.message}")
-        raise HTTPException(status_code=e.status_code, detail=e.message)
-    except Exception as e:
-        logger.error(f"Error fetching Notion data: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Airtable routes
-@router.post("/airtable/authorize")
-async def authorize_airtable(request: AuthorizeRequest):
-    try:
-        auth_url = await airtable.authorize_airtable(request.userId, request.orgId)
->>>>>>> Stashed changes
         return {"url": auth_url}
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Authorization error: {str(e)}")
+        logger.error(f"Error authorizing {provider}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/integrations/{provider}/credentials")
-async def get_integration_credentials(provider: str, request: Request):
+async def get_integration_credentials(
+    provider: str,
+    user_id: str = Query(...),
+    org_id: str = Query(None)
+):
     """Retrieve stored OAuth credentials for a provider."""
     try:
+        logger.info(f"Getting {provider} credentials for user {user_id}")
         provider_funcs = get_provider_functions(provider)
-        
-        # Handle both JSON and form data
-        content_type = request.headers.get('content-type', '')
-        if 'application/json' in content_type:
-            body = await request.json()
-            user_id = body.get('user_id')
-            org_id = body.get('org_id')
-        else:
-            form = await request.form()
-            user_id = form.get('user_id')
-            org_id = form.get('org_id')
-
-        if not user_id or not org_id:
-            raise HTTPException(status_code=400, detail="Missing user_id/org_id")
-
         credentials = await provider_funcs["get_credentials"](user_id, org_id)
         return credentials
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve credentials: {str(e)}")
+        logger.error(f"Failed to retrieve {provider} credentials: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/integrations/{provider}/status")
-async def get_integration_status(provider: str, user_id: str, org_id: str = None):
+async def get_integration_status(
+    provider: str,
+    user_id: str = Query(...),
+    org_id: str = Query(None)
+):
     """Fetch the connection status and workspace details for an integration."""
     try:
+        logger.info(f"Checking {provider} status for user {user_id}")
         provider_funcs = get_provider_functions(provider)
         credentials = await provider_funcs["get_credentials"](user_id, org_id or user_id)
-        items = await provider_funcs["get_items"](credentials)
+        
+        if not credentials:
+            logger.info(f"No {provider} credentials found")
+            return {
+                "isConnected": False,
+                "status": "inactive",
+                "workspace": None
+            }
 
+        items = await provider_funcs["get_items"](credentials)
+        logger.info(f"Successfully retrieved {provider} workspace data")
         return {
             "isConnected": True,
             "status": "active",
@@ -220,6 +139,7 @@ async def get_integration_status(provider: str, user_id: str, org_id: str = None
         }
     
     except Exception as e:
+        logger.error(f"Error checking {provider} status: {str(e)}")
         return {
             "isConnected": False,
             "status": "error",
@@ -227,13 +147,19 @@ async def get_integration_status(provider: str, user_id: str, org_id: str = None
         }
 
 @router.post("/integrations/{provider}/sync")
-async def sync_integration(provider: str, user_id: str, org_id: str = None):
+async def sync_integration(
+    provider: str,
+    user_id: str = Query(...),
+    org_id: str = Query(None)
+):
     """Sync the latest data from the integration provider."""
     try:
+        logger.info(f"Syncing {provider} data for user {user_id}")
         provider_funcs = get_provider_functions(provider)
         credentials = await provider_funcs["get_credentials"](user_id, org_id or user_id)
         items = await provider_funcs["get_items"](credentials)
-
+        
+        logger.info(f"Successfully synced {provider} data")
         return {
             "isConnected": True,
             "status": "active",
@@ -242,33 +168,47 @@ async def sync_integration(provider: str, user_id: str, org_id: str = None):
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}")
+        logger.error(f"Error syncing {provider} data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/integrations/{provider}/disconnect")
-async def disconnect_integration(provider: str, user_id: str, org_id: str = None):
+async def disconnect_integration(
+    provider: str,
+    user_id: str = Query(...),
+    org_id: str = Query(None)
+):
     """Disconnect an integration and delete stored credentials."""
     try:
-        provider_funcs = get_provider_functions(provider)
-
+        logger.info(f"Disconnecting {provider} for user {user_id}")
+        
         # Remove credentials from Redis
         redis_key = f"{provider}_credentials:{org_id or user_id}"
         await delete_key_redis(redis_key)
-
+        
         # Remove from Cassandra (if applicable)
         cassandra_query = f"DELETE FROM integrations WHERE provider='{provider}' AND user_id='{user_id}'"
         cassandra.execute(cassandra_query)
-
-        return {"status": "success", "message": f"Disconnected {provider} for user {user_id}"}
+        
+        logger.info(f"Successfully disconnected {provider}")
+        return {
+            "status": "success",
+            "message": f"Disconnected {provider} for user {user_id}"
+        }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Disconnection error: {str(e)}")
+        logger.error(f"Error disconnecting {provider}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/integrations/{provider}/oauth2callback")
 async def oauth_callback(provider: str, request: Request):
     """Handle OAuth2 callback from provider."""
     try:
+        logger.info(f"Processing {provider} OAuth callback")
         provider_funcs = get_provider_functions(provider)
-        return await provider_funcs["oauth2callback"](request)
+        result = await provider_funcs["oauth2callback"](request)
+        logger.info(f"Successfully processed {provider} OAuth callback")
+        return result
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OAuth2 callback error: {str(e)}")
+        logger.error(f"Error in {provider} OAuth callback: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
