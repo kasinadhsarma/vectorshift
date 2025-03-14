@@ -1,12 +1,7 @@
 "use client"
 
-<<<<<<< HEAD
-import { useState } from "react"
-import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
-=======
 import { useState, useEffect } from "react"
-import { getIntegrationStatus, getIntegrationData } from "@/app/lib/api-client"
->>>>>>> origin/main
+import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
@@ -88,7 +83,6 @@ export default function HubspotIntegrationPage() {
     setIsLoading(true)
     setError(null)
     try {
-<<<<<<< HEAD
       const status = await getIntegrationStatus("hubspot", userId, orgId)
       setIsConnected(status.isConnected)
       
@@ -122,51 +116,6 @@ export default function HubspotIntegrationPage() {
           ...hubspotData
         })
       }
-=======
-      const hubspotData = await getIntegrationData("hubspot", credentials, userId, orgId)
-
-      // Process the data
-      const processedData: { contacts: Contact[], companies: Company[], deals: Deal[] } = {
-        contacts: [],
-        companies: [],
-        deals: [],
-      }
-
-      // Process items based on their type
-      hubspotData.forEach((item: any) => {
-        const getParam = (name: string) => {
-          const param = item.parameters?.find((p: any) => p.name === name)
-          return param ? param.value : ""
-        }
-
-        if (item.type === "contact") {
-          processedData.contacts.push({
-            id: item.id,
-            name: item.name,
-            email: getParam("email"),
-            company: getParam("company"),
-          })
-        } else if (item.type === "company") {
-          processedData.companies.push({
-            id: item.id,
-            name: item.name,
-            domain: getParam("domain"),
-            industry: getParam("industry"),
-            phone: getParam("phone"),
-          })
-        } else if (item.type === "deal") {
-          processedData.deals.push({
-            id: item.id,
-            name: item.name,
-            amount: getParam("amount"),
-            stage: getParam("stage"),
-            closeDate: getParam("closedate"),
-          })
-        }
-      })
-
-      setData(processedData)
->>>>>>> origin/main
     } catch (err) {
       console.error("Error fetching data:", err)
       setError(err instanceof Error ? err.message : "An unknown error occurred")
@@ -202,7 +151,6 @@ export default function HubspotIntegrationPage() {
             </div>
           </CardHeader>
           <CardContent>
-<<<<<<< HEAD
             <HubspotIntegration
               userId={userId}
               orgId={orgId}
@@ -210,9 +158,6 @@ export default function HubspotIntegrationPage() {
             {error && (
               <p className="text-sm text-destructive mt-2">{error}</p>
             )}
-=======
-            <HubspotIntegration userId={userId} orgId={orgId} />
->>>>>>> origin/main
           </CardContent>
         </Card>
 
