@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { HubspotIntegration } from "@/app/components/integrations/hubspot-integration"
+import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { BarChart3, RefreshCw } from "lucide-react"
 
 interface HubSpotContact {
@@ -31,55 +32,12 @@ export default function HubspotIntegrationPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [credentials, setCredentials] = useState<any>(null)
 
   // TODO: Replace with actual user and org data from auth context
   const userId = "user123"
   const orgId = "org456"
 
-  useEffect(() => {
-    // Check connection status on load
-    const checkConnection = async () => {
-      try {
-        const status = await getIntegrationStatus("hubspot", userId, orgId)
-        setIsConnected(status.isConnected)
-        if (status.isConnected && status.credentials) {
-          setCredentials(status.credentials)
-        }
-      } catch (error) {
-        console.error("Error checking connection:", error)
-      }
-    }
-
-    checkConnection()
-  }, [userId, orgId])
-
-  interface Contact {
-    id: string;
-    name: string;
-    email: string;
-    company: string;
-  }
-
-  interface Company {
-    id: string;
-    name: string;
-    domain: string;
-    industry: string;
-    phone: string;
-  }
-
-  interface Deal {
-    id: string;
-    name: string;
-    amount: string;
-    stage: string;
-    closeDate: string;
-  }
-
   const fetchData = async () => {
-    if (!credentials) return
-
     setIsLoading(true)
     setError(null)
     try {
@@ -128,11 +86,16 @@ export default function HubspotIntegrationPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">HubSpot Integration</h1>
-          <p className="text-muted-foreground">Connect and manage your HubSpot CRM data</p>
+          <h1 className="text-3xl font-bold tracking-tight">Hubspot Integration</h1>
+          <p className="text-muted-foreground">Connect and manage your Hubspot CRM data</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={fetchData} disabled={isLoading || !isConnected}>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={fetchData}
+            disabled={isLoading || !isConnected}
+          >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             <span className="sr-only">Refresh data</span>
           </Button>
@@ -147,7 +110,7 @@ export default function HubspotIntegrationPage() {
             </div>
             <div>
               <CardTitle>Connection Status</CardTitle>
-              <CardDescription>Manage your HubSpot connection</CardDescription>
+              <CardDescription>Manage your Hubspot connection</CardDescription>
             </div>
           </CardHeader>
           <CardContent>
@@ -163,8 +126,8 @@ export default function HubspotIntegrationPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>HubSpot Data</CardTitle>
-            <CardDescription>View and manage your HubSpot data</CardDescription>
+            <CardTitle>Hubspot Data</CardTitle>
+            <CardDescription>View and manage your Hubspot data</CardDescription>
           </CardHeader>
           <CardContent>
             {isConnected ? (
@@ -176,13 +139,13 @@ export default function HubspotIntegrationPage() {
                       Loading data...
                     </>
                   ) : (
-                    "Load HubSpot Data"
+                    "Load Hubspot Data"
                   )}
                 </Button>
               </div>
             ) : (
               <div className="text-center py-4">
-                <p className="text-muted-foreground">Connect to HubSpot to view your data</p>
+                <p className="text-muted-foreground">Connect to Hubspot to view your data</p>
               </div>
             )}
           </CardContent>
@@ -190,18 +153,23 @@ export default function HubspotIntegrationPage() {
       </div>
 
       {data && (
-        <Tabs defaultValue="contacts" className="space-y-4">
+        <Tabs defaultValue="visualization" className="space-y-4">
           <TabsList>
+            <TabsTrigger value="visualization">Visualization</TabsTrigger>
             <TabsTrigger value="contacts">Contacts</TabsTrigger>
             <TabsTrigger value="companies">Companies</TabsTrigger>
             <TabsTrigger value="deals">Deals</TabsTrigger>
           </TabsList>
 
+          <TabsContent value="visualization">
+            <DataVisualization data={data} />
+          </TabsContent>
+
           <TabsContent value="contacts">
             <Card>
               <CardHeader>
-                <CardTitle>HubSpot Contacts</CardTitle>
-                <CardDescription>Your HubSpot contacts</CardDescription>
+                <CardTitle>Hubspot Contacts</CardTitle>
+                <CardDescription>Your Hubspot contacts</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="rounded-md border">
@@ -238,38 +206,13 @@ export default function HubspotIntegrationPage() {
           <TabsContent value="companies">
             <Card>
               <CardHeader>
-                <CardTitle>HubSpot Companies</CardTitle>
-                <CardDescription>Your HubSpot companies</CardDescription>
+                <CardTitle>Hubspot Companies</CardTitle>
+                <CardDescription>Your Hubspot companies</CardDescription>
               </CardHeader>
               <CardContent>
-                {data.companies && data.companies.length > 0 ? (
-                  <div className="rounded-md border">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="p-2 text-left font-medium">Name</th>
-                          <th className="p-2 text-left font-medium">Domain</th>
-                          <th className="p-2 text-left font-medium">Industry</th>
-                          <th className="p-2 text-left font-medium">Phone</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.companies.map((company: any) => (
-                          <tr key={company.id} className="border-b">
-                            <td className="p-2">{company.name}</td>
-                            <td className="p-2">{company.domain || "N/A"}</td>
-                            <td className="p-2">{company.industry || "N/A"}</td>
-                            <td className="p-2">{company.phone || "N/A"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-muted-foreground">No company data available</p>
-                  </div>
-                )}
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">Company data will be displayed here when available</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -277,38 +220,13 @@ export default function HubspotIntegrationPage() {
           <TabsContent value="deals">
             <Card>
               <CardHeader>
-                <CardTitle>HubSpot Deals</CardTitle>
-                <CardDescription>Your HubSpot deals</CardDescription>
+                <CardTitle>Hubspot Deals</CardTitle>
+                <CardDescription>Your Hubspot deals</CardDescription>
               </CardHeader>
               <CardContent>
-                {data.deals && data.deals.length > 0 ? (
-                  <div className="rounded-md border">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="p-2 text-left font-medium">Name</th>
-                          <th className="p-2 text-left font-medium">Amount</th>
-                          <th className="p-2 text-left font-medium">Stage</th>
-                          <th className="p-2 text-left font-medium">Close Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.deals.map((deal: any) => (
-                          <tr key={deal.id} className="border-b">
-                            <td className="p-2">{deal.name}</td>
-                            <td className="p-2">{deal.amount || "N/A"}</td>
-                            <td className="p-2">{deal.stage || "N/A"}</td>
-                            <td className="p-2">{deal.closeDate || "N/A"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-muted-foreground">No deal data available</p>
-                  </div>
-                )}
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">Deal data will be displayed here when available</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -317,4 +235,3 @@ export default function HubspotIntegrationPage() {
     </div>
   )
 }
-

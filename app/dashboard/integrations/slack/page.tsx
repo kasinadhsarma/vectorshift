@@ -1,82 +1,45 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { getIntegrationStatus, getIntegrationData } from "@/app/lib/api-client"
+import { useState } from "react"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { SlackIntegration } from "@/app/components/integrations/slack-integration"
+import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { MessageSquare, RefreshCw } from "lucide-react"
 
-interface SlackChannel {
-  id: string
-  name: string
-  members: number
-  is_private: boolean
-  topic: string
-  purpose: string
-}
-
-interface SlackUser {
-  id: string
-  name: string
-  real_name: string
-  email: string
-  title: string
-  status_text: string
-  status_emoji: string
-}
-
-interface SlackTeam {
-  id: string
-  name: string
-}
-
-interface SlackData {
-  channels: SlackChannel[]
-  users: SlackUser[]
-  team: SlackTeam
-}
-
 export default function SlackIntegrationPage() {
-  const [data, setData] = useState<SlackData | null>(null)
+  const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [credentials, setCredentials] = useState<any>(null)
 
   // TODO: Replace with actual user and org data from auth context
   const userId = "user123"
   const orgId = "org456"
 
-  useEffect(() => {
-    // Check connection status on load
-    const checkConnection = async () => {
-      try {
-        const status = await getIntegrationStatus("slack", userId, orgId)
-        setIsConnected(status.isConnected)
-        if (status.isConnected && status.credentials) {
-          setCredentials(status.credentials)
-        }
-      } catch (error) {
-        console.error("Error checking connection:", error)
-      }
-    }
-
-    checkConnection()
-  }, [userId, orgId])
-
   const fetchData = async () => {
-    if (!credentials) return
-
     setIsLoading(true)
     setError(null)
     try {
-      const slackData = await getIntegrationData("slack", credentials, userId, orgId)
-      setData(slackData)
-    } catch (err) {
-      console.error("Error fetching data:", err)
-      setError(err instanceof Error ? err.message : "An unknown error occurred")
+      const status = await getIntegrationStatus("slack", userId)
+      setIsConnected(status.isConnected)
+      
+      if (!status.isConnected) {
+        throw new Error("Slack is not connected")
+      }
+
+      if (status.status === "active") {
+        setData(status.workspace)
+      } else {
+        await syncIntegrationData("slack", userId)
+        const updatedStatus = await getIntegrationStatus("slack", userId)
+        setData(updatedStatus.workspace)
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error)
+      setError(error.message)
     } finally {
       setIsLoading(false)
     }
@@ -90,7 +53,12 @@ export default function SlackIntegrationPage() {
           <p className="text-muted-foreground">Connect and manage your Slack workspace</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={fetchData} disabled={isLoading || !isConnected}>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={fetchData}
+            disabled={isLoading || !isConnected}
+          >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
             <span className="sr-only">Refresh data</span>
           </Button>
@@ -109,7 +77,10 @@ export default function SlackIntegrationPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <SlackIntegration userId={userId} orgId={orgId} />
+            <SlackIntegration
+              userId={userId}
+              orgId={orgId}
+            />
           </CardContent>
         </Card>
 
@@ -142,11 +113,17 @@ export default function SlackIntegrationPage() {
       </div>
 
       {data && (
-        <Tabs defaultValue="channels" className="space-y-4">
+        <Tabs defaultValue="visualization" className="space-y-4">
           <TabsList>
+            <TabsTrigger value="visualization">Visualization</TabsTrigger>
             <TabsTrigger value="channels">Channels</TabsTrigger>
+            <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="visualization">
+            <DataVisualization data={data} />
+          </TabsContent>
 
           <TabsContent value="channels">
             <Card>
@@ -161,21 +138,33 @@ export default function SlackIntegrationPage() {
                       <tr className="border-b bg-muted/50">
                         <th className="p-2 text-left font-medium">Name</th>
                         <th className="p-2 text-left font-medium">Visibility</th>
-                        <th className="p-2 text-left font-medium">Members</th>
-                        <th className="p-2 text-left font-medium">Topic</th>
+                        <th className="p-2 text-left font-medium">Creation Time</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.channels?.map((channel: SlackChannel) => (
+                      {data.channels?.map((channel: any) => (
                         <tr key={channel.id} className="border-b">
                           <td className="p-2">#{channel.name}</td>
-                          <td className="p-2">{channel.is_private ? "Private" : "Public"}</td>
-                          <td className="p-2">{channel.members}</td>
-                          <td className="p-2">{channel.topic || "N/A"}</td>
+                          <td className="p-2">{channel.visibility ? "Public" : "Private"}</td>
+                          <td className="p-2">{new Date(parseInt(channel.creation_time) * 1000).toLocaleDateString()}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="messages">
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Messages</CardTitle>
+                <CardDescription>Recent messages from your Slack workspace</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">Message data will be displayed here when available</p>
                 </div>
               </CardContent>
             </Card>
@@ -188,27 +177,8 @@ export default function SlackIntegrationPage() {
                 <CardDescription>Users in your Slack workspace</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="rounded-md border">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="p-2 text-left font-medium">Name</th>
-                        <th className="p-2 text-left font-medium">Email</th>
-                        <th className="p-2 text-left font-medium">Title</th>
-                        <th className="p-2 text-left font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.users?.map((user: SlackUser) => (
-                        <tr key={user.id} className="border-b">
-                          <td className="p-2">{user.real_name || user.name}</td>
-                          <td className="p-2">{user.email || "N/A"}</td>
-                          <td className="p-2">{user.title || "N/A"}</td>
-                          <td className="p-2">{user.status_text || "N/A"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">User data will be displayed here when available</p>
                 </div>
               </CardContent>
             </Card>
@@ -218,4 +188,3 @@ export default function SlackIntegrationPage() {
     </div>
   )
 }
-

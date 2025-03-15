@@ -1,256 +1,190 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import axios, { type AxiosError } from "axios"
+import { useState } from "react"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
-import { Loader2 } from "lucide-react"
-import { getIntegrationStatus } from "@/app/lib/api-client"
-import { getIntegrationData } from "@/app/lib/api-client" // Adjust the import path as necessary
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
+import { AirtableIntegration } from "@/app/components/integrations/airtable-integration"
+import { DataVisualization } from "@/app/components/dashboard/data-visualization"
+import { FileSpreadsheet, RefreshCw } from "lucide-react"
 
-interface IntegrationParams {
-  credentials?: Record<string, any>
-  type?: string
-}
-
-interface AuthResponse {
-  url: string
-}
-
-interface ErrorResponse {
-  detail: string
-}
-
-interface AirtableBase {
-  id: string
-  name: string
-  tables: number
-}
-
-interface AirtableTable {
-  id: string
-  name: string
-  records: number
-  baseId: string
-}
-
-interface AirtableData {
-  bases: AirtableBase[]
-  tables: AirtableTable[]
-}
-
-interface AirtableIntegrationProps {
-  user: string
-  org: string
-  integrationParams?: IntegrationParams
-  setIntegrationParams: (params: IntegrationParams) => void
-}
-
-export const AirtableIntegration = ({
-  user,
-  org,
-  integrationParams,
-  setIntegrationParams,
-}: AirtableIntegrationProps) => {
-  const [isConnected, setIsConnected] = useState(false)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [airtableData, setAirtableData] = useState<AirtableData | null>(null)
+export default function AirtableIntegrationPage() {
+  const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
 
-  const handleConnectClick = async () => {
-    if (!user || !org) {
-      alert("Missing user or organization ID")
-      return
-    }
+  // TODO: Replace with actual user and org data from auth context
+  const userId = "user123"
+  const orgId = "org456"
 
+  const fetchData = async () => {
+    setIsLoading(true)
+    setError(null)
     try {
-      setIsConnecting(true)
-      const response = await axios.post<AuthResponse>(
-        `/api/integrations/airtable/authorize`,
-        { userId: user, orgId: org },
-        { headers: { "Content-Type": "application/json" } },
-      )
-
-      if (!response.data?.url) {
-        throw new Error("Invalid authorization URL")
+      const status = await getIntegrationStatus("airtable", userId)
+      setIsConnected(status.isConnected)
+      
+      if (!status.isConnected) {
+        throw new Error("Airtable is not connected")
       }
 
-      const newWindow = window.open(
-        response.data.url,
-        "Airtable Authorization",
-        "width=600,height=600,menubar=no,toolbar=no",
-      )
-
-      if (!newWindow) {
-        throw new Error("Popup was blocked. Please allow popups and try again.")
-      }
-
-      const pollTimer = window.setInterval(() => {
-        if (newWindow.closed) {
-          window.clearInterval(pollTimer)
-          handleWindowClosed()
-        }
-      }, 200)
-    } catch (e) {
-      setIsConnecting(false)
-      const error = e as AxiosError<ErrorResponse>
-      console.error("Authorization error:", error)
-      alert(error.response?.data?.detail || "Failed to connect to Airtable")
-    }
-  }
-
-  const handleWindowClosed = async () => {
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      const status = await getIntegrationStatus("airtable", user, org)
-      if (status.isConnected) {
-        setIsConnected(true)
-        setIntegrationParams({
-          credentials: status.credentials,
-          type: "Airtable",
-        })
-        fetchAirtableData(status.credentials)
+      if (status.status === "active") {
+        setData(status)
       } else {
-        throw new Error("Failed to connect to Airtable")
+        await syncIntegrationData("airtable", userId)
+        const updatedStatus = await getIntegrationStatus("airtable", userId)
+        setData(updatedStatus)
       }
-    } catch (e) {
-      setIsConnecting(false)
-      const error = e as AxiosError<ErrorResponse>
-      console.error("Connection error:", error)
-      alert(error.response?.data?.detail || "Failed to connect to Airtable")
-    } finally {
-      setIsConnecting(false)
-    }
-  }
-
-  const fetchAirtableData = async (credentials?: any) => {
-    const creds = credentials || integrationParams?.credentials
-    if (!creds) return
-
-    try {
-      setIsLoading(true)
-      const items = await getIntegrationData("airtable", creds, user, org)
-
-      // Process the items into bases and tables
-      const basesMap: Record<string, AirtableBase> = {}
-      const tables: AirtableTable[] = []
-
-      items.forEach((item: any) => {
-        const getParam = (name: string) => {
-          const param = item.parameters.find((p: { name: string; value: string }) => p.name === name)
-          return param ? param.value : ""
-        }
-
-        if (item.type === "base") {
-          basesMap[item.id] = {
-            id: item.id,
-            name: item.name,
-            tables: Number.parseInt(getParam("tables")) || 0,
-          }
-        } else if (item.type === "table") {
-          tables.push({
-            id: item.id,
-            name: item.name,
-            records: Number.parseInt(getParam("records")) || 0,
-            baseId: getParam("base_id"),
-          })
-        }
-      })
-
-      setAirtableData({
-        bases: Object.values(basesMap),
-        tables,
-      })
     } catch (error) {
-      console.error("Failed to fetch Airtable data:", error)
-      alert("Failed to fetch Airtable data")
+      console.error("Error fetching data:", error)
+      setError(error instanceof Error ? error.message : 'An unknown error occurred')
     } finally {
       setIsLoading(false)
     }
   }
 
-  useEffect(() => {
-    if (integrationParams?.credentials) {
-      setIsConnected(true)
-      fetchAirtableData()
-    }
-  }, [integrationParams])
-
-  const getTablesByBase = (baseId: string) => {
-    return airtableData?.tables.filter((table) => table.baseId === baseId) || []
-  }
-
   return (
-    <div className="mt-4">
-      <h3 className="mb-4">Airtable Integration</h3>
-      <div className="flex flex-col items-center gap-4">
-        <Button
-          variant={isConnected ? "outline" : "default"}
-          onClick={isConnected ? undefined : handleConnectClick}
-          disabled={isConnecting}
-          className={isConnected ? "cursor-default opacity-100" : ""}
-        >
-          {isConnecting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Connecting...
-            </>
-          ) : isConnected ? (
-            "Connected to Airtable"
-          ) : (
-            "Connect to Airtable"
-          )}
-        </Button>
-
-        {isConnected && airtableData && (
-          <div className="w-full">
-            {airtableData.bases.length > 0 ? (
-              airtableData.bases.map((base) => (
-                <div key={base.id} className="mb-6">
-                  <h4 className="font-medium mb-2">{base.name}</h4>
-                  <div className="space-y-2 pl-4">
-                    {getTablesByBase(base.id).length > 0 ? (
-                      getTablesByBase(base.id).map((table) => (
-                        <div key={table.id} className="p-2 border rounded">
-                          <p className="font-medium">{table.name}</p>
-                          <p className="text-sm text-gray-500">{table.records} records</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-center text-gray-500">No tables found</p>
-                    )}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-center text-gray-500">No bases found</p>
-            )}
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        )}
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Airtable Integration</h1>
+          <p className="text-muted-foreground">Connect and manage your Airtable bases</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={fetchData}
+            disabled={isLoading || !isConnected}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            <span className="sr-only">Refresh data</span>
+          </Button>
+        </div>
       </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-4">
+            <div className="p-2 rounded-full bg-primary/10">
+              <FileSpreadsheet className="h-8 w-8 text-primary" />
+            </div>
+            <div>
+              <CardTitle>Connection Status</CardTitle>
+              <CardDescription>Manage your Airtable connection</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <AirtableIntegration
+              userId={userId}
+              orgId={orgId}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Airtable Data</CardTitle>
+            <CardDescription>View and manage your Airtable data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isConnected ? (
+              <div className="space-y-4">
+                <Button onClick={fetchData} disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Loading data...
+                    </>
+                  ) : (
+                    "Load Airtable Data"
+                  )}
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-muted-foreground">Connect to Airtable to view your data</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {data && (
+        <Tabs defaultValue="visualization" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="visualization">Visualization</TabsTrigger>
+            <TabsTrigger value="bases">Bases</TabsTrigger>
+            <TabsTrigger value="tables">Tables</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="visualization">
+            <DataVisualization data={data} />
+          </TabsContent>
+
+          <TabsContent value="bases">
+            <Card>
+              <CardHeader>
+                <CardTitle>Airtable Bases</CardTitle>
+                <CardDescription>Your Airtable bases</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="p-2 text-left font-medium">Name</th>
+                        <th className="p-2 text-left font-medium">Tables</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.bases.map((base: any) => (
+                        <tr key={base.id} className="border-b">
+                          <td className="p-2">{base.name}</td>
+                          <td className="p-2">{base.tables}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tables">
+            <Card>
+              <CardHeader>
+                <CardTitle>Airtable Tables</CardTitle>
+                <CardDescription>Your Airtable tables</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="p-2 text-left font-medium">Name</th>
+                        <th className="p-2 text-left font-medium">Records</th>
+                        <th className="p-2 text-left font-medium">Base</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.tables.map((table: any) => (
+                        <tr key={table.id} className="border-b">
+                          <td className="p-2">{table.name}</td>
+                          <td className="p-2">{table.records}</td>
+                          <td className="p-2">{data.bases.find((base: any) => base.id === table.baseId)?.name}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   )
 }
-
-// Wrapping AirtableIntegration in a page component
-export default function AirtablePage() {
-  return (
-    <div>
-      <AirtableIntegration 
-        user="default-user" // These should be replaced with actual values from your auth context
-        org="default-org"
-        setIntegrationParams={(params) => {
-          console.log('Integration params updated:', params);
-          // Implement your state management here
-        }}
-      />
-    </div>
-  );
-}
-

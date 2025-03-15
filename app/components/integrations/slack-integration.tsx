@@ -1,246 +1,261 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import axios, { type AxiosError } from "axios"
 import { Button } from "@/app/components/ui/button"
-import { Loader2 } from "lucide-react"
-import { getIntegrationStatus, getIntegrationData } from "@/app/lib/api-client"
-
-interface SlackChannel {
-  id: string
-  name: string
-  members: number
-  is_private: boolean
-  topic: string
-  purpose: string
-}
-
-interface SlackUser {
-  id: string
-  name: string
-  real_name: string
-  email: string
-  title: string
-  status_text: string
-  status_emoji: string
-}
-
-interface SlackTeam {
-  id: string
-  name: string
-}
-
-interface SlackData {
-  channels: SlackChannel[]
-  users: SlackUser[]
-  team: SlackTeam
-}
+import { useToast } from "@/hooks/use-toast"
+import { Badge } from "@/app/components/ui/badge"
+import { Loader2, CheckCircle2, AlertCircle, Lock, Unlock } from "lucide-react"
+import {
+  authorizeIntegration,
+  getIntegrationStatus,
+  disconnectIntegration,
+  getSlackChannels,
+  syncIntegrationData,
+  IntegrationStatus,
+  SlackChannel,
+} from "@/app/lib/api-client"
 
 interface SlackIntegrationProps {
   userId: string
   orgId: string
 }
 
-interface ErrorResponse {
-  detail: string
+interface SlackWorkspace {
+  id: string
+  name: string
+  channels: SlackChannel[]
 }
 
-export const SlackIntegration = ({ userId, orgId }: SlackIntegrationProps) => {
+export function SlackIntegration({ userId, orgId }: SlackIntegrationProps) {
   const [isConnected, setIsConnected] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [slackData, setSlackData] = useState<SlackData | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [credentials, setCredentials] = useState<any>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [workspace, setWorkspace] = useState<SlackWorkspace | null>(null)
+  const { toast } = useToast()
 
   useEffect(() => {
-    // Check if already connected
-    const checkConnection = async () => {
+    const checkStatus = async () => {
       try {
-        const status = await getIntegrationStatus("slack", userId, orgId)
+        const status: IntegrationStatus = await getIntegrationStatus('slack', userId)
         setIsConnected(status.isConnected)
-        if (status.isConnected && status.credentials) {
-          setCredentials(status.credentials)
-          fetchSlackData(status.credentials)
+
+        if (status.isConnected && status.credentials?.workspaceId) {
+          const channels = await getSlackChannels(status.credentials.workspaceId)
+          setWorkspace({
+            id: status.credentials.workspaceId,
+            name: 'Slack Workspace',
+            channels
+          })
+        }
+
+        if (status.error) {
+          setError(status.error)
         }
       } catch (error) {
-        console.error("Error checking connection:", error)
+        console.error('Error checking Slack status:', error)
+        setError('Failed to check integration status')
+      } finally {
+        setIsLoading(false)
       }
     }
 
-    checkConnection()
-  }, [userId, orgId])
+    checkStatus()
+  }, [userId])
 
-  const handleConnectClick = async () => {
-    if (!userId || !orgId) {
-      alert("Missing user or organization ID")
-      return
-    }
-
+  const handleConnect = async () => {
     try {
       setIsConnecting(true)
-      const response = await axios.post(
-        `/api/integrations/slack/authorize`,
-        { userId, orgId },
-        { headers: { "Content-Type": "application/json" } },
+      setError(null)
+
+      const authUrl = await authorizeIntegration('slack', userId, orgId)
+
+      const width = 600
+      const height = 700
+      const left = window.screenX + (window.outerWidth - width) / 2
+      const top = window.screenY + (window.outerHeight - height) / 2
+
+      const authWindow = window.open(
+        authUrl,
+        'Slack Authorization',
+        `width=${width},height=${height},left=${left},top=${top}`
       )
 
-      if (!response.data?.url) {
-        throw new Error("Invalid authorization URL")
-      }
+      window.addEventListener('message', async (event) => {
+        if (event.data.type === 'slack-oauth-callback') {
+          if (event.data.success) {
+            setIsConnected(true)
+            toast({
+              title: "Connected successfully",
+              description: "Successfully connected to Slack",
+            })
 
-      const newWindow = window.open(
-        response.data.url,
-        "Slack Authorization",
-        "width=600,height=600,menubar=no,toolbar=no",
-      )
-
-      if (!newWindow) {
-        throw new Error("Popup was blocked. Please allow popups and try again.")
-      }
-
-      // Listen for message from popup
-      const messageHandler = (event: MessageEvent) => {
-        if (event.data.type === "SLACK_AUTH_SUCCESS") {
-          window.removeEventListener("message", messageHandler)
-          handleAuthSuccess(event.data.org_id, event.data.user_id)
-        } else if (event.data.type === "SLACK_AUTH_ERROR") {
-          window.removeEventListener("message", messageHandler)
-          handleAuthError(event.data.error)
+            const channels = await getSlackChannels(event.data.workspaceId)
+            setWorkspace({
+              id: event.data.workspaceId,
+              name: 'Slack Workspace',
+              channels
+            })
+          } else {
+            setError('Failed to connect to Slack')
+            toast({
+              title: "Connection failed",
+              description: event.data.error || "Failed to connect to Slack",
+              variant: "destructive",
+            })
+          }
+          authWindow?.close()
         }
-      }
-
-      window.addEventListener("message", messageHandler)
-
-      // Also poll for window close in case message isn't received
-      const pollTimer = window.setInterval(() => {
-        if (newWindow.closed) {
-          window.clearInterval(pollTimer)
-          window.removeEventListener("message", messageHandler)
-          handleAuthSuccess(orgId, userId) // Assume success if window closed normally
-        }
-      }, 200)
-    } catch (e) {
-      setIsConnecting(false)
-      const error = e as AxiosError<ErrorResponse>
-      console.error("Authorization error:", error)
-      alert(error.response?.data?.detail || "Failed to connect to Slack")
-    }
-  }
-
-  const handleAuthSuccess = async (org_id: string, user_id: string) => {
-    try {
-      // Verify the connection immediately
-      const status = await getIntegrationStatus("slack", user_id, org_id)
-      if (status.isConnected) {
-        setIsConnected(true)
-        setCredentials(status.credentials)
-        await fetchSlackData(status.credentials)
-      } else {
-        throw new Error("Connection verification failed")
-      }
+      })
     } catch (error) {
-      console.error("Error verifying connection:", error)
-      handleAuthError(error instanceof Error ? error.message : "Failed to verify connection")
+      console.error('Error connecting to Slack:', error)
+      setError('Failed to initiate Slack connection')
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect to Slack",
+        variant: "destructive",
+      })
     } finally {
       setIsConnecting(false)
     }
   }
 
-  const handleAuthError = (error: string) => {
-    console.error("Authentication error:", error)
-    alert(`Failed to connect to Slack: ${error}`)
-    setIsConnecting(false)
+  const handleDisconnect = async () => {
+    try {
+      await disconnectIntegration('slack', userId)
+      setIsConnected(false)
+      setWorkspace(null)
+      toast({
+        title: "Disconnected",
+        description: "Successfully disconnected from Slack",
+      })
+    } catch (error) {
+      console.error('Error disconnecting from Slack:', error)
+      toast({
+        title: "Error",
+        description: "Failed to disconnect from Slack",
+        variant: "destructive",
+      })
+    }
   }
 
-  const fetchSlackData = async (creds?: any) => {
-    const credsToUse = creds || credentials
-    if (!credsToUse) return
-
+  const handleSync = async () => {
     try {
-      setIsLoading(true)
-      const data = await getIntegrationData("slack", credsToUse, userId, orgId)
-      setSlackData(data)
+      setIsSyncing(true)
+      await syncIntegrationData('slack', userId)
+
+      if (workspace) {
+        const channels = await getSlackChannels(workspace.id)
+        setWorkspace({
+          ...workspace,
+          channels
+        })
+      }
+
+      toast({
+        title: "Sync complete",
+        description: "Successfully synced Slack data",
+      })
     } catch (error) {
-      console.error("Failed to fetch Slack data:", error)
-      alert("Failed to fetch Slack data")
+      console.error('Error syncing Slack data:', error)
+      toast({
+        title: "Sync failed",
+        description: "Failed to sync Slack data",
+        variant: "destructive",
+      })
     } finally {
-      setIsLoading(false)
+      setIsSyncing(false)
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-6">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    )
   }
 
   return (
-    <div className="mt-4">
-      <div className="flex flex-col items-center gap-4">
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h3 className="text-lg font-medium">Slack Integration</h3>
+        <p className="text-sm text-muted-foreground">
+          Connect to your Slack workspace to access and sync your channels.
+        </p>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md">
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </div>
+      )}
+
+      <div className="flex gap-4">
         <Button
+          onClick={isConnected ? handleDisconnect : handleConnect}
+          disabled={isConnecting || isSyncing}
           variant={isConnected ? "outline" : "default"}
-          onClick={isConnected ? undefined : handleConnectClick}
-          disabled={isConnecting}
-          className={isConnected ? "cursor-default opacity-100" : ""}
         >
-          {isConnecting ? (
+          {isConnected ? (
+            <>
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              Disconnect Slack
+            </>
+          ) : isConnecting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Connecting...
             </>
-          ) : isConnected ? (
-            "Connected to Slack"
           ) : (
             "Connect to Slack"
           )}
         </Button>
 
-        {isConnected && slackData && (
-          <div className="w-full">
-            <h4 className="font-medium mb-2">Team: {slackData.team.name}</h4>
-
-            <h5 className="font-medium mb-2 mt-4">Channels</h5>
-            <div className="space-y-2">
-              {slackData.channels && slackData.channels.length > 0 ? (
-                slackData.channels.map((channel) => (
-                  <div key={channel.id} className="p-2 border rounded">
-                    <p className="font-medium">#{channel.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {channel.is_private ? "Private" : "Public"} • {channel.members} members
-                    </p>
-                    {channel.topic && <p className="text-sm text-gray-500">Topic: {channel.topic}</p>}
-                  </div>
-                ))
-              ) : (
-                <p className="text-center text-gray-500">No channels found</p>
-              )}
-            </div>
-
-            <h5 className="font-medium mb-2 mt-4">Users</h5>
-            <div className="space-y-2">
-              {slackData.users && slackData.users.length > 0 ? (
-                slackData.users.slice(0, 5).map((user) => (
-                  <div key={user.id} className="p-2 border rounded">
-                    <p className="font-medium">{user.real_name || user.name}</p>
-                    {user.title && <p className="text-sm text-gray-500">{user.title}</p>}
-                    {user.email && <p className="text-sm text-gray-500">{user.email}</p>}
-                    {user.status_text && (
-                      <p className="text-sm text-gray-500">
-                        {user.status_emoji} {user.status_text}
-                      </p>
-                    )}
-                  </div>
-                ))
-              ) : (
-                <p className="text-center text-gray-500">No users found</p>
-              )}
-              {slackData.users && slackData.users.length > 5 && (
-                <p className="text-center text-sm text-gray-500">+ {slackData.users.length - 5} more users</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {isLoading && (
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
+        {isConnected && (
+          <Button
+            onClick={handleSync}
+            disabled={isSyncing}
+            variant="outline"
+          >
+            {isSyncing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              "Sync Data"
+            )}
+          </Button>
         )}
       </div>
+
+      {workspace && workspace.channels.length > 0 && (
+        <div className="border rounded-lg p-4">
+          <h4 className="font-medium mb-2">Connected Channels</h4>
+          <div className="space-y-2">
+            {workspace.channels.map(channel => (
+              <div key={channel.id} className="flex justify-between text-sm p-2 bg-muted/50 rounded">
+                <span className="flex items-center gap-2">
+                  <span>#{channel.name}</span>
+                  {channel.visibility ? (
+                    <Unlock className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <Lock className="h-4 w-4 text-yellow-500" />
+                  )}
+                </span>
+                {channel.creation_time && (
+                  <span className="text-muted-foreground">
+                    Created: {new Date(parseInt(channel.creation_time) * 1000).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
