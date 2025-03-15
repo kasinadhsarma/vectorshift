@@ -38,11 +38,7 @@ export function GoogleAuthProvider({ children }: GoogleAuthProviderProps) {
       setUser(userData)
       localStorage.setItem("googleUser", JSON.stringify(userData))
       localStorage.setItem("authToken", event.data.token)
-      
-      // Get user ID and hash it for the URL
-      const userId = userData.email.split('@')[0]
-      const hashedId = hashUserId(userId)
-      router.push(`/dashboard/${hashedId}`)
+      router.push("/dashboard")
     }
   }, [router])
 

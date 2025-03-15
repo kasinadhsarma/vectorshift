@@ -31,48 +31,168 @@ async def authorize_notion(user_id, org_id):
     return f'{authorization_url}&state={encoded_state}'
 
 async def oauth2callback_notion(request: Request):
-    if request.query_params.get('error'):
-        raise HTTPException(status_code=400, detail=request.query_params.get('error'))
-    code = request.query_params.get('code')
-    encoded_state = request.query_params.get('state')
-    state_data = json.loads(encoded_state)
+    """Handle OAuth2 callback from Notion"""
+    try:
+        # Check for OAuth error
+        if request.query_params.get('error'):
+            raise HTTPException(
+                status_code=400, 
+                detail=request.query_params.get('error_description', request.query_params.get('error'))
+            )
 
-    original_state = state_data.get('state')
-    user_id = state_data.get('user_id')
-    org_id = state_data.get('org_id')
+        # Get and validate required parameters
+        code = request.query_params.get('code')
+        encoded_state = request.query_params.get('state')
+        
+        if not code or not encoded_state:
+            raise HTTPException(status_code=400, detail='Missing required parameters')
 
-    saved_state = await get_value_redis(f'notion_state:{org_id}:{user_id}')
+        try:
+            state_data = json.loads(encoded_state)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail='Invalid state parameter')
 
-    if not saved_state or original_state != json.loads(saved_state).get('state'):
-        raise HTTPException(status_code=400, detail='State does not match.')
+        original_state = state_data.get('state')
+        user_id = state_data.get('user_id')
+        org_id = state_data.get('org_id')
 
-    async with httpx.AsyncClient() as client:
-        response, _ = await asyncio.gather(
-            client.post(
-                'https://api.notion.com/v1/oauth/token',
-                json={
-                    'grant_type': 'authorization_code',
-                    'code': code,
-                    'redirect_uri': REDIRECT_URI
-                }, 
-                headers={
-                    'Authorization': f'Basic {encoded_client_id_secret}',
-                    'Content-Type': 'application/json',
-                }
-            ),
-            delete_key_redis(f'notion_state:{org_id}:{user_id}'),
+        if not all([original_state, user_id, org_id]):
+            raise HTTPException(status_code=400, detail='Invalid state data')
+
+        # Validate state
+        saved_state = await get_value_redis(f'notion_state:{org_id}:{user_id}')
+        if not saved_state:
+            raise HTTPException(status_code=400, detail='State expired or not found')
+
+        if original_state != json.loads(saved_state).get('state'):
+            raise HTTPException(status_code=400, detail='State mismatch')
+
+        # Exchange code for token
+        async with httpx.AsyncClient() as client:
+            response, _ = await asyncio.gather(
+                client.post(
+                    'https://api.notion.com/v1/oauth/token',
+                    json={
+                        'grant_type': 'authorization_code',
+                        'code': code,
+                        'redirect_uri': REDIRECT_URI
+                    }, 
+                    headers={
+                        'Authorization': f'Basic {encoded_client_id_secret}',
+                        'Content-Type': 'application/json',
+                    }
+                ),
+                delete_key_redis(f'notion_state:{org_id}:{user_id}')
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Token exchange failed: {response.text}"
+                )
+
+            credentials = response.json()
+            await add_key_value_redis(
+                f'notion_credentials:{org_id}:{user_id}',
+                json.dumps(credentials),
+                expire=600
+            )
+
+        # Return success response
+        close_window_script = """
+        <html>
+            <head>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        margin: 0;
+                        background-color: #f5f5f5;
+                    }
+                    .message {
+                        text-align: center;
+                        padding: 20px;
+                        background: white;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    }
+                    .success {
+                        color: #15803d;
+                        font-size: 1.2em;
+                        margin-bottom: 10px;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="message">
+                    <div class="success">Successfully connected to Notion!</div>
+                    <p>You can close this window now.</p>
+                </div>
+                <script>
+                    setTimeout(() => window.close(), 2000);
+                </script>
+            </body>
+        </html>
+        """
+        return HTMLResponse(content=close_window_script)
+
+    except HTTPException as e:
+        error_script = f"""
+        <html>
+            <head>
+                <style>
+                    body {{
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 100vh;
+                        margin: 0;
+                        background-color: #f5f5f5;
+                    }}
+                    .message {{
+                        text-align: center;
+                        padding: 20px;
+                        background: white;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    }}
+                    .error {{
+                        color: #dc2626;
+                        font-size: 1.2em;
+                        margin-bottom: 10px;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="message">
+                    <div class="error">Authentication Failed</div>
+                    <p>{e.detail}</p>
+                </div>
+                <script>
+                    setTimeout(() => window.close(), 3000);
+                </script>
+            </body>
+        </html>
+        """
+        return HTMLResponse(content=error_script, status_code=e.status_code)
+    except Exception as e:
+        logger.error(f"Unexpected error in Notion OAuth callback: {str(e)}")
+        return HTMLResponse(
+            content="""
+            <html>
+                <body>
+                    <script>
+                        window.close();
+                    </script>
+                </body>
+            </html>
+            """,
+            status_code=500
         )
-
-    await add_key_value_redis(f'notion_credentials:{org_id}:{user_id}', json.dumps(response.json()), expire=600)
-    
-    close_window_script = """
-    <html>
-        <script>
-            window.close();
-        </script>
-    </html>
-    """
-    return HTMLResponse(content=close_window_script)
 
 async def get_notion_credentials(user_id, org_id):
     credentials = await get_value_redis(f'notion_credentials:{org_id}:{user_id}')
@@ -137,22 +257,42 @@ def create_integration_item_metadata_object(
 
 async def get_items_notion(credentials) -> list[IntegrationItem]:
     """Aggregates all metadata relevant for a notion integration"""
-    credentials = json.loads(credentials)
-    response = requests.post(
-        'https://api.notion.com/v1/search',
-        headers={
-            'Authorization': f'Bearer {credentials.get("access_token")}',
-            'Notion-Version': '2022-06-28',
-        },
-    )
-
-    if response.status_code == 200:
-        results = response.json()['results']
-        list_of_integration_item_metadata = []
-        for result in results:
-            list_of_integration_item_metadata.append(
-                create_integration_item_metadata_object(result)
+    try:
+        credentials = json.loads(credentials) if isinstance(credentials, str) else credentials
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                'https://api.notion.com/v1/search',
+                headers={
+                    'Authorization': f'Bearer {credentials.get("access_token")}',
+                    'Notion-Version': '2022-06-28',
+                    'Content-Type': 'application/json'
+                },
+                json={}  # Empty search to get all items
             )
 
-        print(list_of_integration_item_metadata)
-    return
+            response.raise_for_status()
+            results = response.json()['results']
+            
+            list_of_integration_item_metadata = [
+                create_integration_item_metadata_object(result)
+                for result in results
+                if result.get('id')  # Only include items with valid IDs
+            ]
+
+            return list_of_integration_item_metadata
+
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=e.response.status_code if hasattr(e, 'response') else 500,
+            detail=f"Error fetching Notion data: {str(e)}"
+        )
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid credentials format"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
