@@ -2,6 +2,7 @@ from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 import jwt
+import re
 from redis_client import get_value_redis
 import os
 
@@ -25,6 +26,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             "/integrations/airtable/oauth2callback",
             "/integrations/slack/oauth2callback",
             "/integrations/hubspot/oauth2callback",
+            "/integrations/notion/status",
+            "/integrations/airtable/status",
+            "/integrations/slack/status",
+            "/integrations/hubspot/status",
             "/",
         ]
 
@@ -101,9 +106,34 @@ def add_cors_middleware(app):
         max_age=3600,
     )
 
+def camel_to_snake(name):
+    """Convert camelCase to snake_case"""
+    pattern = re.compile(r'(?<!^)(?=[A-Z])')
+    return pattern.sub('_', name).lower()
+
+class CaseConverterMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Convert query parameters from camelCase to snake_case
+        query_params = dict(request.query_params)
+        new_params = {}
+        
+        for key, value in query_params.items():
+            snake_key = camel_to_snake(key)
+            new_params[snake_key] = value
+            
+        # Update request query parameters
+        request.scope["query_string"] = "&".join(
+            f"{key}={value}" for key, value in new_params.items()
+        ).encode()
+        
+        response = await call_next(request)
+        return response
+
 def setup_middleware(app):
     """Setup all middleware"""
     # Add CORS middleware first
     add_cors_middleware(app)
+    # Add case converter middleware
+    app.add_middleware(CaseConverterMiddleware)
     # Then add authentication middleware
     app.add_middleware(AuthMiddleware)

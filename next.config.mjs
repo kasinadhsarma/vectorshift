@@ -21,6 +21,22 @@ const nextConfig = {
     parallelServerBuildTraces: true,
     parallelServerCompiles: true,
   },
+  env: {
+    BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:8000',
+  },
+  async rewrites() {
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000'
+    return [
+      {
+        source: '/api/integrations/:path*',
+        destination: `${backendUrl}/integrations/:path*`,
+      },
+      {
+        source: '/api/auth/:path*',
+        destination: `${backendUrl}/auth/:path*`,
+      }
+    ]
+  }
 }
 
 mergeConfig(nextConfig, userConfig)

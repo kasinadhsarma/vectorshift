@@ -5,7 +5,7 @@ python-multipart==0.0.6
 python-dotenv==1.0.0
 
 # Database
-cassandra-driver==3.28.0
+cassandra-driver==3.29.1
 redis==5.0.1
 
 # Authentication
@@ -22,7 +22,7 @@ python-jose[cryptography]==3.3.0
 passlib==1.7.4
 
 # API clients
-hubspot-api-client==7.6.0
+hubspot-api-client==11.1.0
 notion-client==2.2.1
 slack-sdk==3.27.0
 airtable-python-wrapper==0.15.3

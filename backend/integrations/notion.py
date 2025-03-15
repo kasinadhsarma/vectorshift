@@ -9,17 +9,45 @@ import asyncio
 import base64
 import requests
 from integrations.integration_item import IntegrationItem
-
+import os
+import logging
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 
-CLIENT_ID = 'XXX'
-CLIENT_SECRET = 'XXX'
-encoded_client_id_secret = base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode()
+logger = logging.getLogger(__name__)
 
-REDIRECT_URI = 'http://localhost:8000/integrations/notion/oauth2callback'
-authorization_url = f'https://api.notion.com/v1/oauth/authorize?client_id={CLIENT_ID}&response_type=code&owner=user&redirect_uri=http%3A%2F%2Flocalhost%3A8000%2Fintegrations%2Fnotion%2Foauth2callback'
+def get_notion_config():
+    """Get Notion configuration from environment variables"""
+    client_id = os.environ.get('NOTION_CLIENT_ID')
+    client_secret = os.environ.get('NOTION_CLIENT_SECRET')
+    redirect_uri = os.environ.get('NOTION_REDIRECT_URI')
+
+    if not all([client_id, client_secret, redirect_uri]):
+        logger.warning("Notion environment variables not configured")
+        return None, None, None
+
+    encoded_secret = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+    auth_url = f'https://api.notion.com/v1/oauth/authorize?client_id={client_id}&response_type=code&owner=user&redirect_uri={redirect_uri}'
+    
+    return encoded_secret, auth_url, redirect_uri
+
+def check_notion_config():
+    """Verify Notion configuration is available"""
+    if not all([os.environ.get('NOTION_CLIENT_ID'),
+                os.environ.get('NOTION_CLIENT_SECRET'),
+                os.environ.get('NOTION_REDIRECT_URI')]):
+        raise HTTPException(
+            status_code=503,
+            detail="Notion integration not configured. Please set NOTION_CLIENT_ID, NOTION_CLIENT_SECRET, and NOTION_REDIRECT_URI"
+        )
 
 async def authorize_notion(user_id, org_id):
+    """Start Notion OAuth flow"""
+    check_notion_config()
+    
+    encoded_secret, auth_url, _ = get_notion_config()
+    if not auth_url:
+        raise HTTPException(status_code=503, detail="Notion integration not configured")
+
     state_data = {
         'state': secrets.token_urlsafe(32),
         'user_id': user_id,
@@ -28,10 +56,13 @@ async def authorize_notion(user_id, org_id):
     encoded_state = json.dumps(state_data)
     await add_key_value_redis(f'notion_state:{org_id}:{user_id}', encoded_state, expire=600)
 
-    return f'{authorization_url}&state={encoded_state}'
+    return f'{auth_url}&state={encoded_state}'
 
 async def oauth2callback_notion(request: Request):
     """Handle OAuth2 callback from Notion"""
+    check_notion_config()
+    encoded_secret, _, redirect_uri = get_notion_config()
+
     try:
         # Check for OAuth error
         if request.query_params.get('error'):
@@ -75,10 +106,10 @@ async def oauth2callback_notion(request: Request):
                     json={
                         'grant_type': 'authorization_code',
                         'code': code,
-                        'redirect_uri': REDIRECT_URI
+                        'redirect_uri': redirect_uri
                     }, 
                     headers={
-                        'Authorization': f'Basic {encoded_client_id_secret}',
+                        'Authorization': f'Basic {encoded_secret}',
                         'Content-Type': 'application/json',
                     }
                 ),
@@ -195,6 +226,7 @@ async def oauth2callback_notion(request: Request):
         )
 
 async def get_notion_credentials(user_id, org_id):
+    """Get stored Notion credentials for a user"""
     credentials = await get_value_redis(f'notion_credentials:{org_id}:{user_id}')
     if not credentials:
         raise HTTPException(status_code=400, detail='No credentials found.')
@@ -258,6 +290,7 @@ def create_integration_item_metadata_object(
 async def get_items_notion(credentials) -> list[IntegrationItem]:
     """Aggregates all metadata relevant for a notion integration"""
     try:
+        check_notion_config()
         credentials = json.loads(credentials) if isinstance(credentials, str) else credentials
         async with httpx.AsyncClient() as client:
             response = await client.post(
