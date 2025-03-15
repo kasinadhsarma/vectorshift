@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/ta
 import { NotionIntegration } from "@/app/components/integrations/notion-integration"
 import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { Lightbulb, RefreshCw } from "lucide-react"
+import { IntegrationHeader } from "@/app/components/integrations/shared/integration-header"
 
 interface NotionPage {
   id: string
@@ -21,12 +22,7 @@ interface NotionDatabase {
   items: number
 }
 
-import { NotionCredentials } from "@/app/components/integrations/types"
-
-interface IntegrationParams {
-  credentials?: NotionCredentials
-  type?: string
-}
+import { NotionCredentials, IntegrationParams } from "@/app/components/integrations/types"
 
 interface IntegrationData {
   isConnected: boolean
@@ -55,13 +51,17 @@ export default function NotionIntegrationPage() {
         const status = await getIntegrationStatus("notion", userId, orgId)
         setIsConnected(status.isConnected)
         if (status.isConnected && status.credentials) {
-          // Store the credentials in the correct format
+          // Transform credentials to match NotionCredentials interface
           const processedCreds = status.credentials.credentials || status.credentials
+          const notionCreds: NotionCredentials = {
+            access_token: processedCreds.access_token || processedCreds.accessToken,
+            bot_id: processedCreds.bot_id || processedCreds.botId || '',
+            workspace_name: processedCreds.workspace_name,
+            workspace_id: processedCreds.workspace_id || processedCreds.workspaceId,
+            owner: processedCreds.owner
+          }
           setIntegrationParams({
-            credentials: {
-              access_token: processedCreds.access_token,
-              ...processedCreds
-            },
+            credentials: notionCreds,
             type: "Notion",
           })
           setData(status)
@@ -126,21 +126,20 @@ export default function NotionIntegrationPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Notion Integration</h1>
-          <p className="text-muted-foreground">Connect and manage your Notion workspace</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={fetchData}
-            disabled={isLoading || !isConnected}
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            <span className="sr-only">Refresh data</span>
-          </Button>
-        </div>
+        <IntegrationHeader 
+          title="Notion Integration"
+          description="Connect and manage your Notion workspace"
+          icon={<Lightbulb className="h-6 w-6" />}
+        />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={fetchData}
+          disabled={isLoading || !isConnected}
+        >
+          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+          <span className="sr-only">Refresh data</span>
+        </Button>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

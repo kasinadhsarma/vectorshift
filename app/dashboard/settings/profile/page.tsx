@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Label } from "@/app/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/app/components/ui/use-toast";
 import { Icons } from "@/app/components/icons";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
 import { getUserProfile, updateUserProfile, uploadProfileImage } from "@/app/lib/api-client";
@@ -145,7 +145,7 @@ export default function ProfileSettingsPage() {
 
     try {
       setIsSaving(true);
-      const { imageUrl: avatarUrl } = await uploadProfileImage(profile.email, file) as UploadResponse;
+      const avatarUrl = await uploadProfileImage(file);
       setProfile({ ...profile, avatarUrl });
 
       await updateUserProfile(profile.email, { avatarUrl } as Partial<UserProfile>);

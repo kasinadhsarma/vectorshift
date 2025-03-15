@@ -3,8 +3,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/app/components/ui/button'
 import { Card } from '@/app/components/ui/card'
 import { Loader2 } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
+import { useToast } from '@/app/components/ui/use-toast'
 import type { IntegrationProps } from './types'
+import { getIntegrationStatus, getIntegrationData } from '@/app/lib/api-client'
 
 export function NotionIntegration({ 
   user, 
@@ -14,6 +15,7 @@ export function NotionIntegration({
 }: IntegrationProps) {
   const [isConnected, setIsConnected] = useState<boolean>(false)
   const [isConnecting, setIsConnecting] = useState<boolean>(false)
+  const [isLoading, setIsLoading] = useState<boolean>(false)
   const { toast } = useToast()
 
   // Initialize connection status
@@ -31,36 +33,26 @@ export function NotionIntegration({
         throw new Error(data.detail || 'Failed to check integration status')
       }
 
-      return data.isConnected
+      return data
     } catch (error) {
       console.error('Error checking integration status:', error)
-      return false
+      return null
     }
   }, [user, org])
 
   // Handle successful authorization
   const handleAuthSuccess = useCallback(async () => {
     try {
-      const isConnected = await checkIntegrationStatus()
-      if (isConnected) {
-        const response = await fetch(`/api/integrations/notion/data?userId=${user}&orgId=${org}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ userId: user, orgId: org }),
-        })
-
-        const data = await response.json()
-        if (!response.ok) {
-          throw new Error(data.detail || 'Failed to fetch Notion data')
-        }
-
+      const status = await checkIntegrationStatus()
+      if (status?.isConnected) {
         setIsConnected(true)
         setIntegrationParams({
-          credentials: data.credentials,
+          credentials: status.credentials,
           type: 'Notion',
         })
+
+        // Fetch initial data after successful connection
+        await fetchNotionData(status.credentials)
 
         toast({
           title: 'Connected to Notion',
@@ -78,6 +70,41 @@ export function NotionIntegration({
       setIsConnecting(false)
     }
   }, [user, org, setIntegrationParams, toast, checkIntegrationStatus])
+
+  const fetchNotionData = async (credentials?: any) => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/integrations/notion/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user,
+          orgId: org,
+          credentials: credentials || integrationParams?.credentials
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.detail || 'Failed to fetch Notion data')
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error) {
+      console.error('Error fetching Notion data:', error)
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to fetch Notion data',
+      })
+      throw error
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // Handle connection click
   const handleConnectClick = useCallback(async () => {
@@ -149,7 +176,7 @@ export function NotionIntegration({
         <h3 className="text-lg font-semibold">Connect to Notion</h3>
         <Button
           onClick={isConnected ? undefined : handleConnectClick}
-          disabled={isConnecting}
+          disabled={isConnecting || isLoading}
           variant={isConnected ? "secondary" : "default"}
           className={isConnected ? "cursor-default" : ""}
         >
@@ -157,6 +184,11 @@ export function NotionIntegration({
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Connecting...
+            </>
+          ) : isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading...
             </>
           ) : isConnected ? (
             'Connected to Notion'
