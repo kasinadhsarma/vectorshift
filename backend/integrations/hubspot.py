@@ -1,33 +1,54 @@
-import json
-import secrets
+from typing import Optional, Dict, List
+import httpx
+from datetime import datetime
 from fastapi import Request, HTTPException
 from fastapi.responses import HTMLResponse
-import httpx
-import asyncio
-import base64
-from integrations.integration_item import IntegrationItem
-from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
+import json
+import logging
 import os
+import secrets
+from .integration_item import IntegrationItem
+from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
 from dotenv import load_dotenv
 
 load_dotenv()
 
-CLIENT_ID = os.getenv('HUBSPOT_CLIENT_ID')
-CLIENT_SECRET = os.getenv('HUBSPOT_CLIENT_SECRET')
-REDIRECT_URI = 'http://localhost:8000/integrations/hubspot/oauth2callback'
+logger = logging.getLogger(__name__)
 
-authorization_url = f'https://app.hubspot.com/oauth/authorize?client_id={CLIENT_ID}&redirect_uri={REDIRECT_URI}&scope=contacts'
+def get_hubspot_config():
+    """Get HubSpot configuration from environment variables"""
+    client_id = os.environ.get('HUBSPOT_CLIENT_ID')
+    client_secret = os.environ.get('HUBSPOT_CLIENT_SECRET')
+    redirect_uri = os.environ.get('HUBSPOT_REDIRECT_URI')
+    
+    if not all([client_id, client_secret, redirect_uri]):
+        logger.warning("HubSpot environment variables not configured")
+        return None, None, None
+        
+    return client_id, client_secret, redirect_uri
 
-async def authorize_hubspot(user_id, org_id):
-    state_data = {
-        'state': secrets.token_urlsafe(32),
+async def authorize_hubspot(user_id: str, org_id: str) -> str:
+    """Initialize HubSpot OAuth flow"""
+    client_id, _, redirect_uri = get_hubspot_config()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="HubSpot integration not configured")
+        
+    state = {
         'user_id': user_id,
         'org_id': org_id
     }
-    encoded_state = json.dumps(state_data)
-    await add_key_value_redis(f'hubspot_state:{org_id}:{user_id}', encoded_state, expire=600)
     
-    return f'{authorization_url}&state={encoded_state}'
+    # Store state in Redis
+    await add_key_value_redis(
+        f'hubspot_state:{org_id}:{user_id}', 
+        json.dumps(state),
+        expire=600
+    )
+    
+    scopes = "contacts crm.objects.contacts.read"
+    auth_url = f"https://app.hubspot.com/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope={scopes}"
+    
+    return auth_url
 
 async def oauth2callback_hubspot(request: Request):
     if request.query_params.get('error'):
@@ -76,17 +97,93 @@ async def oauth2callback_hubspot(request: Request):
     """
     return HTMLResponse(content=close_window_script)
 
-async def get_hubspot_credentials(user_id, org_id):
+async def get_hubspot_credentials(user_id: str, org_id: str) -> Dict:
+    """Retrieve stored HubSpot credentials"""
     credentials = await get_value_redis(f'hubspot_credentials:{org_id}:{user_id}')
     if not credentials:
-        raise HTTPException(status_code=400, detail='No credentials found.')
-    
-    credentials = json.loads(credentials)
-    if not credentials:
-        raise HTTPException(status_code=400, detail='No credentials found.')
-    
-    await delete_key_redis(f'hubspot_credentials:{org_id}:{user_id}')
-    return credentials
+        raise HTTPException(status_code=404, detail="No credentials found")
+        
+    return json.loads(credentials)
+
+class HubspotIntegration:
+    def __init__(self, credentials: Dict[str, str]):
+        self.access_token = credentials.get('access_token')
+        self.hub_domain = credentials.get('hub_domain')
+
+    async def get_contacts(self, limit: int = 100) -> List[IntegrationItem]:
+        """Fetch contacts from HubSpot CRM"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                'https://api.hubapi.com/crm/v3/objects/contacts',
+                params={'limit': limit},
+                headers={
+                    'Authorization': f'Bearer {self.access_token}',
+                    'Content-Type': 'application/json'
+                }
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch HubSpot contacts"
+                )
+                
+            data = response.json()
+            contacts = []
+            
+            for contact in data.get('results', []):
+                contact_props = contact.get('properties', {})
+                contacts.append(
+                    IntegrationItem(
+                        id=contact['id'],
+                        name=f"{contact_props.get('firstname', '')} {contact_props.get('lastname', '')}".strip(),
+                        type='contact',
+                        email=contact_props.get('email'),
+                        company=contact_props.get('company'),
+                        last_modified_time=datetime.fromtimestamp(contact['updatedAt']/1000) if contact.get('updatedAt') else None
+                    )
+                )
+            
+            return contacts
+
+    async def get_companies(self, limit: int = 100) -> List[Dict]:
+        """Fetch companies from HubSpot CRM"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                'https://api.hubapi.com/crm/v3/objects/companies',
+                params={'limit': limit},
+                headers={
+                    'Authorization': f'Bearer {self.access_token}',
+                    'Content-Type': 'application/json'
+                }
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch companies"
+                )
+                
+            return response.json().get('results', [])
+
+    async def sync_data(self) -> Dict:
+        """Sync all available data from HubSpot"""
+        try:
+            contacts = await self.get_contacts()
+            companies = await self.get_companies()
+            
+            return {
+                "status": "success",
+                "data": {
+                    "contacts": contacts,
+                    "companies": companies
+                }
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
 
 def create_integration_item_metadata_object(contact_data: dict) -> IntegrationItem:
     """Creates an integration metadata object from a HubSpot contact"""
@@ -98,29 +195,3 @@ def create_integration_item_metadata_object(contact_data: dict) -> IntegrationIt
         last_modified_time=contact_data.get('updatedAt'),
         parent_id=None
     )
-
-async def get_items_hubspot(credentials) -> list[IntegrationItem]:
-    """Retrieves all contacts from HubSpot"""
-    if not isinstance(credentials, dict):
-        credentials = json.loads(credentials)
-    
-    access_token = credentials.get('access_token')
-    if not access_token:
-        raise HTTPException(status_code=400, detail='Invalid credentials')
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            'https://api.hubapi.com/crm/v3/objects/contacts',
-            headers={'Authorization': f'Bearer {access_token}'}
-        )
-        
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail='Failed to fetch HubSpot contacts'
-            )
-
-        data = response.json()
-        contacts = data.get('results', [])
-        
-        return [create_integration_item_metadata_object(contact) for contact in contacts]

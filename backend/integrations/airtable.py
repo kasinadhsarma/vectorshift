@@ -14,6 +14,7 @@ import logging
 import requests
 from integrations.integration_item import IntegrationItem
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
+from typing import Optional, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -42,39 +43,28 @@ def check_airtable_config():
             detail="Airtable integration not configured. Please set AIRTABLE_CLIENT_ID, AIRTABLE_CLIENT_SECRET, and AIRTABLE_REDIRECT_URI"
         )
 
-async def authorize_airtable(user_id, org_id):
-    """Start Airtable OAuth flow"""
-    check_airtable_config()
-    
-    encoded_secret, auth_url, _ = get_airtable_config()
-    if not auth_url:
+async def authorize_airtable(user_id: str, org_id: str) -> str:
+    """Initialize Airtable OAuth flow"""
+    client_id, _, redirect_uri = get_airtable_config()
+    if not client_id:
         raise HTTPException(status_code=503, detail="Airtable integration not configured")
-
-    state_data = {
-        'state': secrets.token_urlsafe(32),
+        
+    state = {
         'user_id': user_id,
         'org_id': org_id
     }
-    encoded_state = base64.urlsafe_b64encode(json.dumps(state_data).encode('utf-8')).decode('utf-8')
-
-    code_verifier = secrets.token_urlsafe(32)
-    m = hashlib.sha256()
-    m.update(code_verifier.encode('utf-8'))
-    code_challenge = base64.urlsafe_b64encode(m.digest()).decode('utf-8').replace('=', '')
-
-    scope = 'data.records:read data.records:write data.recordComments:read data.recordComments:write schema.bases:read schema.bases:write'
-    complete_auth_url = f'{auth_url}&state={encoded_state}&code_challenge={code_challenge}&code_challenge_method=S256&scope={scope}'
     
-    try:
-        await asyncio.gather(
-            add_key_value_redis(f'airtable_state:{org_id}:{user_id}', json.dumps(state_data), expire=600),
-            add_key_value_redis(f'airtable_verifier:{org_id}:{user_id}', code_verifier, expire=600),
-        )
-    except Exception as e:
-        logger.error(f"Failed to store OAuth state: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to initialize OAuth flow")
-
-    return complete_auth_url
+    # Store state in Redis
+    await add_key_value_redis(
+        f'airtable_state:{org_id}:{user_id}', 
+        json.dumps(state),
+        expire=600
+    )
+    
+    scopes = "data.records:read,schema.bases:read"
+    auth_url = f"https://airtable.com/oauth2/v1/authorize?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&scope={scopes}"
+    
+    return auth_url
 
 async def oauth2callback_airtable(request: Request):
     """Handle OAuth2 callback from Airtable"""
@@ -227,15 +217,13 @@ async def oauth2callback_airtable(request: Request):
         """
         return HTMLResponse(content=error_script, status_code=e.status_code)
 
-async def get_airtable_credentials(user_id, org_id):
-    """Get stored Airtable credentials for a user"""
+async def get_airtable_credentials(user_id: str, org_id: str) -> Dict:
+    """Retrieve stored Airtable credentials"""
     credentials = await get_value_redis(f'airtable_credentials:{org_id}:{user_id}')
     if not credentials:
-        raise HTTPException(status_code=400, detail='No credentials found.')
-    credentials = json.loads(credentials)
-    await delete_key_redis(f'airtable_credentials:{org_id}:{user_id}')
-
-    return credentials
+        raise HTTPException(status_code=404, detail="No credentials found")
+        
+    return json.loads(credentials)
 
 def create_integration_item_metadata_object(
     response_json: str, item_type: str, parent_id=None, parent_name=None
@@ -325,3 +313,84 @@ async def get_items_airtable(credentials) -> list[IntegrationItem]:
             status_code=500,
             detail=f"Unexpected error: {str(e)}"
         )
+
+class AirtableIntegration:
+    def __init__(self, credentials: Dict[str, str]):
+        self.access_token = credentials.get('access_token')
+        self.workspace_id = credentials.get('workspace_id')
+
+    async def get_bases(self) -> List[IntegrationItem]:
+        """Fetch bases from Airtable workspace"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                'https://api.airtable.com/v0/meta/bases',
+                headers={
+                    'Authorization': f'Bearer {self.access_token}',
+                    'Content-Type': 'application/json'
+                }
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch Airtable bases"
+                )
+                
+            data = response.json()
+            bases = []
+            
+            for base in data.get('bases', []):
+                bases.append(
+                    IntegrationItem(
+                        id=base['id'],
+                        name=base['name'],
+                        type='base',
+                        last_modified_time=datetime.fromisoformat(base.get('modifiedTime', '')),
+                        url=base.get('url')
+                    )
+                )
+            
+            return bases
+
+    async def get_tables(self, base_id: str) -> List[Dict]:
+        """Fetch tables within a base"""
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f'https://api.airtable.com/v0/meta/bases/{base_id}/tables',
+                headers={
+                    'Authorization': f'Bearer {self.access_token}',
+                    'Content-Type': 'application/json'
+                }
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch tables"
+                )
+                
+            return response.json().get('tables', [])
+
+    async def sync_data(self) -> Dict:
+        """Sync all available data from Airtable"""
+        try:
+            bases = await self.get_bases()
+            all_tables = {}
+            
+            for base in bases:
+                if base.id:
+                    tables = await self.get_tables(base.id)
+                    all_tables[base.id] = tables
+            
+            return {
+                "status": "success",
+                "data": {
+                    "bases": bases,
+                    "tables": all_tables
+                }
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e)
+            }
