@@ -1,64 +1,187 @@
-# Technical Paper: Backend and Frontend Architecture
+# VectorShift Technical Documentation
 
-## Backend Implementation using FastAPI
+## System Architecture
 
-The backend of the project is implemented using FastAPI. The following are the key components and routes defined in the backend:
+The VectorShift integration platform consists of a FastAPI backend and a Next.js frontend, with Cassandra for persistent storage and Redis for caching.
 
-### Authentication Routes
-- **File:** `backend/auth_routes.py`
-- **Description:** This file contains the routes for user authentication, including signup, login, password reset, and token verification.
+### Backend Components
 
-### Dashboard Routes
-- **File:** `backend/routes/dashboard.py`
-- **Description:** This file contains the routes for fetching and refreshing user-specific dashboard data, including integration statistics and sync data.
+#### Authentication System
+- **Dual Authentication**: Supports both traditional email/password and Google OAuth2
+- **JWT-based**: Uses JWT tokens for session management
+- **Password Reset**: Includes secure password reset functionality
 
-### Integration Routes
-- **File:** `backend/routes/integrations.py`
-- **Description:** This file contains the routes for handling OAuth authorization, fetching credentials, and syncing data for various third-party integrations like Notion, Airtable, Slack, and HubSpot.
+#### Database Schema
+- **Cassandra Tables**:
+  - `users`: User accounts and authentication details
+  - `user_profiles`: User profile information
+  - `user_integrations`: Integration configurations
+  - `user_credentials`: OAuth tokens and credentials
+  - `integration_items`: Synchronized data from integrations
+  - `password_reset_tokens`: Password reset management
 
-### Profile Routes
-- **File:** `backend/routes/profiles.py`
-- **Description:** This file contains the routes for fetching and updating user profile information.
+#### Integration System
+- **Supported Platforms**:
+  - HubSpot: Contact management
+  - Notion: Document and database access
+  - Slack: Channel communications
+  - Airtable: Base and table management
 
-## Frontend Implementation using Next.js
+- **OAuth Flow**:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Redis
+    participant External
+    User->>Frontend: Initiate Integration
+    Frontend->>Backend: Request Auth URL
+    Backend->>Redis: Store State
+    Backend->>Frontend: Return Auth URL
+    Frontend->>External: Redirect to OAuth
+    External->>Backend: OAuth Callback
+    Backend->>Redis: Verify State
+    Backend->>Redis: Store Credentials
+    Backend->>Frontend: Success Response
+```
 
-The frontend of the project is implemented using Next.js. The following are the key components and their locations:
+### Frontend Components
 
-### Dashboard Components
-- **File:** `app/components/dashboard/dashboard-content.tsx`
-- **Description:** This file contains the main dashboard component that displays integration statistics, active integrations, and data visualization tabs.
+#### Authentication Components
+- Google Auth Button
+- Login/Register Forms
+- Password Reset Flow
 
-- **File:** `app/components/dashboard/data-visualization.tsx`
-- **Description:** This file contains the component for visualizing integration data in different formats like charts, tables, and metrics.
+#### Integration Components
+- Integration Cards
+- Connection Status Display
+- Data Sync Controls
+- Error Handling UI
 
-## Integration with Third-Party Services
+## Setup Instructions
 
-The project integrates with various third-party services like Google, Airtable, Notion, Slack, and HubSpot. The integration logic is handled in the following files:
+1. **Database Setup**
+```bash
+# Start Cassandra
+docker run -d --name vectorshift-cassandra -p 9042:9042 cassandra:latest
 
-### Google Integration
-- **File:** `backend/integrations/google_auth.py`
-- **Description:** This file contains the logic for Google OAuth authentication, including generating the authorization URL, handling the callback, and fetching user information.
+# Start Redis
+redis-server
 
-### Airtable Integration
-- **File:** `backend/integrations/airtable.py`
-- **Description:** This file contains the logic for Airtable OAuth authentication, including generating the authorization URL, handling the callback, and fetching bases and tables.
+# Initialize Database
+cd backend
+python init_db.py
+```
 
-### Notion Integration
-- **File:** `backend/integrations/notion.py`
-- **Description:** This file contains the logic for Notion OAuth authentication, including generating the authorization URL, handling the callback, and fetching databases and pages.
+2. **Environment Variables**
+```env
+# Backend (.env)
+CASSANDRA_HOST=localhost
+CASSANDRA_PORT=9042
+CASSANDRA_KEYSPACE=vectorshift
+JWT_SECRET_KEY=your-secret-key
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-secret
+HUBSPOT_CLIENT_ID=your-hubspot-client-id
+HUBSPOT_CLIENT_SECRET=your-hubspot-secret
 
-### Slack Integration
-- **File:** `backend/integrations/slack.py`
-- **Description:** This file contains the logic for Slack OAuth authentication, including generating the authorization URL, handling the callback, and fetching channels.
+# Frontend (.env.local)
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+```
 
-### HubSpot Integration
-- **File:** `backend/integrations/hubspot.py`
-- **Description:** This file contains the logic for HubSpot OAuth authentication, including generating the authorization URL, handling the callback, and fetching contacts.
+3. **Backend Setup**
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
 
-## Authentication Management using JWT Tokens
+4. **Frontend Setup**
+```bash
+npm install
+npm run dev
+```
 
-Authentication in the project is managed using JWT tokens. The middleware for handling JWT authentication is defined in the following file:
+## API Documentation
 
-### JWT Middleware
-- **File:** `backend/middleware.py`
-- **Description:** This file contains the middleware for verifying JWT tokens, extracting user information, and handling CORS configuration.
+### Authentication Endpoints
+
+- `POST /auth/register`: Register new user
+- `POST /auth/token`: Login with credentials
+- `POST /auth/google/url`: Get Google OAuth URL
+- `POST /auth/google/callback`: Handle Google OAuth callback
+- `POST /auth/forgot-password`: Initiate password reset
+- `POST /auth/reset-password`: Complete password reset
+
+### Integration Endpoints
+
+#### HubSpot
+- `POST /integrations/hubspot/authorize`: Start OAuth flow
+- `GET /integrations/hubspot/oauth2callback`: OAuth callback
+- `POST /integrations/hubspot/credentials`: Get stored credentials
+- `POST /integrations/hubspot/get_hubspot_items`: Fetch contacts
+
+Similar endpoints exist for Notion, Slack, and Airtable integrations.
+
+## Security Considerations
+
+1. **Authentication**:
+   - Passwords are hashed using bcrypt
+   - JWT tokens with expiration
+   - OAuth state verification
+   - Rate limiting on auth endpoints
+
+2. **Data Protection**:
+   - Credentials encrypted in transit
+   - OAuth tokens stored securely
+   - Session management
+   - CORS configuration
+
+3. **Integration Security**:
+   - OAuth2 for all integrations
+   - Token refresh handling
+   - Scope limitations
+   - Error handling
+
+## Development Guidelines
+
+1. **Code Structure**:
+   - Modular integration implementation
+   - Shared utilities and types
+   - Consistent error handling
+   - Type safety with TypeScript/Pydantic
+
+2. **Testing**:
+   - Unit tests for core functionality
+   - Integration tests for OAuth flows
+   - Error case coverage
+   - Mock external services
+
+3. **Best Practices**:
+   - Follow FastAPI patterns
+   - Use React hooks effectively
+   - Implement proper error handling
+   - Maintain consistent documentation
+
+## Deployment Considerations
+
+1. **Infrastructure**:
+   - Scalable Cassandra cluster
+   - Redis for caching
+   - Load balancing
+   - SSL/TLS configuration
+
+2. **Monitoring**:
+   - Integration health checks
+   - Authentication metrics
+   - Error tracking
+   - Performance monitoring
+
+3. **Maintenance**:
+   - Database backups
+   - Token cleanup
+   - Log rotation
+   - Version updates

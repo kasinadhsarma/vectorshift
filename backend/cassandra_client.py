@@ -68,7 +68,7 @@ class CassandraClient:
             FROM user_integrations
             WHERE user_id = %s
             """
-            rows = self.session.execute(query, [user_id])
+            rows = await (await self.session.execute_async(query, [user_id])).all()
             
             integrations = []
             for row in rows:
@@ -97,7 +97,8 @@ class CassandraClient:
             SET status = %s, last_sync = %s
             WHERE user_id = %s AND name = %s
             """
-            self.session.execute(query, [status, datetime.now(), user_id, integration_name])
+            future = await self.session.execute_async(query, [status, datetime.now(), user_id, integration_name])
+            await future.result()
             
             return True
         except Exception as e:
@@ -115,7 +116,7 @@ class CassandraClient:
             (user_id, name, status, last_sync, workspace_count, settings)
             VALUES (%s, %s, %s, %s, %s, %s)
             """
-            self.session.execute(query, [
+            future = await self.session.execute_async(query, [
                 user_id,
                 integration_name,
                 'active',
@@ -123,6 +124,7 @@ class CassandraClient:
                 0,  # Initial workspace count
                 settings
             ])
+            await future.result()
             
             return True
         except Exception as e:
@@ -139,12 +141,13 @@ class CassandraClient:
             INSERT INTO user_credentials (user_id, provider, credentials, created_at)
             VALUES (%s, %s, %s, %s)
             """
-            self.session.execute(query, [
+            future = await self.session.execute_async(query, [
                 user_id,
                 credentials.get('provider', 'google'),
                 credentials,
                 datetime.now()
             ])
+            await future.result()
             return True
         except Exception as e:
             print(f"Error storing user credentials: {str(e)}")
@@ -158,8 +161,8 @@ class CassandraClient:
 
             # Check if user already exists
             query = "SELECT email FROM users WHERE email = %s ALLOW FILTERING"
-            rows = self.session.execute(query, [email])
-            if len(list(rows)) > 0:
+            rows = await (await self.session.execute_async(query, [email])).all()
+            if len(rows) > 0:
                 raise ValueError("User already exists")
 
             # Hash password
@@ -171,11 +174,12 @@ class CassandraClient:
             INSERT INTO users (email, password_hash, created_at)
             VALUES (%s, %s, %s)
             """
-            self.session.execute(query, [
+            future = await self.session.execute_async(query, [
                 email,
                 hashed.decode('utf-8'),
                 datetime.now()
             ])
+            await future.result()
 
             return email
         except Exception as e:
@@ -190,7 +194,7 @@ class CassandraClient:
 
             # Get user
             query = "SELECT email, password_hash FROM users WHERE email = %s ALLOW FILTERING"
-            rows = self.session.execute(query, [email])
+            rows = await (await self.session.execute_async(query, [email])).all()
             user = next(iter(rows), None)
 
             if not user:
@@ -219,8 +223,8 @@ class CassandraClient:
 
             # Verify user exists
             query = "SELECT email FROM users WHERE email = %s ALLOW FILTERING"
-            rows = self.session.execute(query, [email])
-            if not next(iter(rows), None):
+            rows = await (await self.session.execute_async(query, [email])).all()
+            if len(rows) == 0:
                 raise ValueError("User not found")
 
             # Generate token
@@ -234,7 +238,8 @@ class CassandraClient:
             INSERT INTO password_reset_tokens (email, token, created_at)
             VALUES (%s, %s, %s)
             """
-            self.session.execute(query, [email, token, datetime.now()])
+            future = await self.session.execute_async(query, [email, token, datetime.now()])
+            await future.result()
 
             return token
         except Exception as e:
@@ -266,11 +271,13 @@ class CassandraClient:
             SET password_hash = %s
             WHERE email = %s
             """
-            self.session.execute(query, [hashed.decode('utf-8'), email])
+            update_future = await self.session.execute_async(query, [hashed.decode('utf-8'), email])
+            await update_future.result()
 
             # Delete used token
             query = "DELETE FROM password_reset_tokens WHERE token = %s"
-            self.session.execute(query, [token])
+            delete_future = await self.session.execute_async(query, [token])
+            await delete_future.result()
 
             return True
         except Exception as e:
@@ -299,11 +306,9 @@ class CassandraClient:
             WHERE user_id = %s
             LIMIT 1
             """
-            rows = self.session.execute(query, [user_id])
-            row = next(iter(rows), None)
-            
-            if row:
-                return row.credentials
+            rows = await (await self.session.execute_async(query, [user_id])).all()
+            if rows:
+                return rows[0].credentials
             return None
         except Exception as e:
             print(f"Error getting user credentials: {str(e)}")
@@ -321,11 +326,11 @@ class CassandraClient:
             FROM user_profiles
             WHERE email = %s
             """
-            row = self.session.execute(query, [email]).one()
-            
-            if not row:
+            rows = await (await self.session.execute_async(query, [email])).all()
+            if not rows:
                 return None
-
+            
+            row = rows[0]
             return {
                 "email": email,
                 "fullName": row.full_name,
@@ -371,7 +376,8 @@ class CassandraClient:
             """
 
             # Execute query with values
-            self.session.execute(query, [*update_data.values(), email])
+            future = await self.session.execute_async(query, [*update_data.values(), email])
+            await future.result()
             return True
             
         except Exception as e:
@@ -407,7 +413,7 @@ class CassandraClient:
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             
-            self.session.execute(query, [
+            future = await self.session.execute_async(query, [
                 email,
                 default_profile["full_name"],
                 default_profile["display_name"],
@@ -418,6 +424,7 @@ class CassandraClient:
                 default_profile["preferences"],
                 default_profile["updated_at"]
             ])
+            await future.result()
             return True
 
         except Exception as e:

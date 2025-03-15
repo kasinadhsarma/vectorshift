@@ -35,13 +35,16 @@ def create_keyspace_and_tables():
         # Switch to the keyspace
         session.set_keyspace(keyspace)
 
-        # Create users table
+        # Create users table with auth provider
         print("Creating users table...")
         session.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 email text PRIMARY KEY,
                 password_hash text,
-                created_at timestamp
+                auth_provider text,
+                google_id text,
+                created_at timestamp,
+                last_login timestamp
             )
         """)
         print("Users table created successfully.")
