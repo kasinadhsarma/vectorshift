@@ -7,17 +7,32 @@ import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { SlackIntegration } from "@/app/components/integrations/slack-integration"
 import { DataVisualization } from "@/app/components/dashboard/data-visualization"
-import { MessageSquare, RefreshCw } from "lucide-react"
+import { Hash, RefreshCw } from "lucide-react"
+
+interface SlackChannel {
+  id: string
+  name: string
+  visibility: boolean
+  creation_time?: string
+  type: 'channel'
+}
+
+interface IntegrationData {
+  isConnected: boolean
+  status: string
+  workspace?: SlackChannel[]
+  error?: string
+}
 
 export default function SlackIntegrationPage() {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<IntegrationData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
 
   // TODO: Replace with actual user and org data from auth context
   const userId = "user123"
-  const orgId = "org456"
+  const orgId = "user123"
 
   const fetchData = async () => {
     setIsLoading(true)
@@ -25,21 +40,49 @@ export default function SlackIntegrationPage() {
     try {
       const status = await getIntegrationStatus("slack", userId)
       setIsConnected(status.isConnected)
-      
+
+      // Type guard to ensure we're working with SlackChannel[]
+      const isSlackChannel = (item: any): item is SlackChannel => {
+        return item && typeof item === 'object' && item.type === 'channel';
+      };
+
+      const isSlackChannelArray = (items: any[]): items is SlackChannel[] => {
+        return items.every(isSlackChannel);
+      };
+
       if (!status.isConnected) {
-        throw new Error("Slack is not connected")
+        throw new Error("Slack is not connected");
       }
 
-      if (status.status === "active") {
-        setData(status.workspace)
-      } else {
-        await syncIntegrationData("slack", userId)
-        const updatedStatus = await getIntegrationStatus("slack", userId)
-        setData(updatedStatus.workspace)
+      const typedData: IntegrationData = {
+        isConnected: status.isConnected,
+        status: status.status,
+        error: status.error,
+        workspace: status.workspace && Array.isArray(status.workspace) && isSlackChannelArray(status.workspace)
+          ? status.workspace
+          : []
+      };
+
+      setData(typedData);
+
+      if (status.status !== "active") {
+        await syncIntegrationData("slack", userId);
+        const updatedStatus = await getIntegrationStatus("slack", userId);
+
+        const updatedTypedData: IntegrationData = {
+          isConnected: updatedStatus.isConnected,
+          status: updatedStatus.status,
+          error: updatedStatus.error,
+          workspace: updatedStatus.workspace && Array.isArray(updatedStatus.workspace) && isSlackChannelArray(updatedStatus.workspace)
+            ? updatedStatus.workspace
+            : []
+        };
+
+        setData(updatedTypedData);
       }
-    } catch (error) {
-      console.error("Error fetching data:", error)
-      setError(error.message)
+    } catch (err) {
+      console.error("Error fetching data:", err)
+      setError(err instanceof Error ? err.message : "An unknown error occurred")
     } finally {
       setIsLoading(false)
     }
@@ -69,7 +112,7 @@ export default function SlackIntegrationPage() {
         <Card>
           <CardHeader className="flex flex-row items-center gap-4">
             <div className="p-2 rounded-full bg-primary/10">
-              <MessageSquare className="h-8 w-8 text-primary" />
+              <Hash className="h-8 w-8 text-primary" />
             </div>
             <div>
               <CardTitle>Connection Status</CardTitle>
@@ -117,8 +160,6 @@ export default function SlackIntegrationPage() {
           <TabsList>
             <TabsTrigger value="visualization">Visualization</TabsTrigger>
             <TabsTrigger value="channels">Channels</TabsTrigger>
-            <TabsTrigger value="messages">Messages</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
           </TabsList>
 
           <TabsContent value="visualization">
@@ -138,47 +179,19 @@ export default function SlackIntegrationPage() {
                       <tr className="border-b bg-muted/50">
                         <th className="p-2 text-left font-medium">Name</th>
                         <th className="p-2 text-left font-medium">Visibility</th>
-                        <th className="p-2 text-left font-medium">Creation Time</th>
+                        <th className="p-2 text-left font-medium">Created</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {data.channels?.map((channel: any) => (
+                      {data.workspace?.map((channel: SlackChannel) => (
                         <tr key={channel.id} className="border-b">
                           <td className="p-2">#{channel.name}</td>
-                          <td className="p-2">{channel.visibility ? "Public" : "Private"}</td>
-                          <td className="p-2">{new Date(parseInt(channel.creation_time) * 1000).toLocaleDateString()}</td>
+                          <td className="p-2">{channel.visibility ? 'Public' : 'Private'}</td>
+                          <td className="p-2">{channel.creation_time ? new Date(channel.creation_time).toLocaleDateString() : 'N/A'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="messages">
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Messages</CardTitle>
-                <CardDescription>Recent messages from your Slack workspace</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-4">
-                  <p className="text-muted-foreground">Message data will be displayed here when available</p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="users">
-            <Card>
-              <CardHeader>
-                <CardTitle>Slack Users</CardTitle>
-                <CardDescription>Users in your Slack workspace</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-4">
-                  <p className="text-muted-foreground">User data will be displayed here when available</p>
                 </div>
               </CardContent>
             </Card>

@@ -61,7 +61,26 @@ async def oauth2callback_slack(request: Request):
 
     await add_key_value_redis(f'slack_credentials:{org_id}:{user_id}', json.dumps(response.json()), expire=600)
     
-    return HTMLResponse(content="<html><script>window.close();</script></html>")
+    return HTMLResponse(content="""
+        <html>
+            <head><title>Slack Connection Successful</title></head>
+            <body>
+                <h1>Connection Successful!</h1>
+                <p>You have successfully connected your Slack account.</p>
+                <script>
+                    window.opener.postMessage(
+                        { 
+                            type: 'slack-oauth-callback',
+                            success: true,
+                            workspaceId: 'slack'
+                        },
+                        '*'
+                    );
+                    setTimeout(() => window.close(), 1000);
+                </script>
+            </body>
+        </html>
+    """)
 
 async def get_slack_credentials(user_id, org_id):
     credentials = await get_value_redis(f'slack_credentials:{org_id}:{user_id}')
@@ -98,4 +117,3 @@ async def get_items_slack(credentials) -> list[IntegrationItem]:
             )
             for channel in channels
         ]
-

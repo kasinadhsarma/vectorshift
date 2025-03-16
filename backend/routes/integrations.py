@@ -1,6 +1,7 @@
-from fastapi import Request, APIRouter, HTTPException, Depends
+from fastapi import Request, APIRouter, HTTPException, Depends, Response, Query
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.security import HTTPBearer
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Any, Optional
 from cassandra_client import CassandraClient
 from integrations.notion import (
     authorize_notion, oauth2callback_notion,
@@ -23,6 +24,14 @@ from redis_client import get_value_redis, delete_key_redis
 router = APIRouter()
 security = HTTPBearer()
 cassandra = CassandraClient()
+
+# CORS headers for OAuth callbacks
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Credentials": "true",
+}
 
 # Provider mapping for OAuth integrations
 PROVIDER_MAP = {
@@ -62,9 +71,10 @@ def get_provider_functions(provider: str) -> Dict[str, Callable]:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
     return PROVIDER_MAP[provider]
 
-@router.post("/integrations/{provider}/authorize")
+@router.post("/{provider}/authorize")
 async def authorize_integration(provider: str, request: Request):
     """Generate OAuth authorization URL for the provider."""
+    print(f"Authorizing {provider}")
     try:
         provider_funcs = get_provider_functions(provider)
         
@@ -72,12 +82,14 @@ async def authorize_integration(provider: str, request: Request):
         content_type = request.headers.get('content-type', '')
         if 'application/json' in content_type:
             body = await request.json()
-            user_id = body.get('userId')
-            org_id = body.get('orgId')
+            user_id = body.get('user_id') or body.get('userId')
+            org_id = body.get('org_id') or body.get('orgId')
         else:
             form = await request.form()
             user_id = form.get('user_id')
             org_id = form.get('org_id')
+
+        print(f"Auth request for {provider} - user: {user_id}, org: {org_id}")
 
         if not user_id or not org_id:
             raise HTTPException(status_code=400, detail="Missing user_id/org_id")
@@ -86,15 +98,58 @@ async def authorize_integration(provider: str, request: Request):
         return {"url": auth_url}
     
     except Exception as e:
+        print(f"Authorization error for {provider}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Authorization error: {str(e)}")
 
-@router.post("/integrations/{provider}/credentials")
-async def get_integration_credentials(provider: str, request: Request):
-    """Retrieve stored OAuth credentials for a provider."""
+@router.get("/{provider}/status")
+async def get_integration_status(
+    provider: str,
+    user_id: str = Query(..., description="User ID"),
+    org_id: Optional[str] = Query(None, description="Organization ID")
+):
+    """Fetch the connection status and workspace details for an integration."""
+    print(f"Checking status for {provider} - user: {user_id}, org: {org_id}")
     try:
         provider_funcs = get_provider_functions(provider)
-        
-        # Handle both JSON and form data
+        try:
+            credentials = await provider_funcs["get_credentials"](user_id, org_id or user_id)
+            items = await provider_funcs["get_items"](credentials)
+
+            return {
+                "isConnected": True,
+                "status": "active",
+                "lastSync": "2025-03-12T12:00:00Z",
+                "workspace": items
+            }
+        except Exception as e:
+            print(f"Error getting credentials/items: {str(e)}")
+            if "No credentials found" in str(e):
+                return {
+                    "isConnected": False,
+                    "status": "disconnected",
+                    "error": "Integration not connected"
+                }
+            return {
+                "isConnected": False,
+                "status": "error",
+                "error": str(e)
+            }
+    
+    except Exception as e:
+        print(f"Status error for {provider}: {str(e)}")
+        return {
+            "isConnected": False,
+            "status": "error",
+            "error": str(e)
+        }
+
+@router.post("/{provider}/sync")
+async def sync_integration(
+    provider: str,
+    request: Request
+):
+    """Sync the latest data from the integration provider."""
+    try:
         content_type = request.headers.get('content-type', '')
         if 'application/json' in content_type:
             body = await request.json()
@@ -105,19 +160,11 @@ async def get_integration_credentials(provider: str, request: Request):
             user_id = form.get('user_id')
             org_id = form.get('org_id')
 
-        if not user_id or not org_id:
-            raise HTTPException(status_code=400, detail="Missing user_id/org_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Missing user_id")
 
-        credentials = await provider_funcs["get_credentials"](user_id, org_id)
-        return credentials
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve credentials: {str(e)}")
-
-@router.get("/integrations/{provider}/status")
-async def get_integration_status(provider: str, user_id: str, org_id: str = None):
-    """Fetch the connection status and workspace details for an integration."""
-    try:
+        print(f"Syncing {provider} - user: {user_id}, org: {org_id}")
+        
         provider_funcs = get_provider_functions(provider)
         credentials = await provider_funcs["get_credentials"](user_id, org_id or user_id)
         items = await provider_funcs["get_items"](credentials)
@@ -130,55 +177,82 @@ async def get_integration_status(provider: str, user_id: str, org_id: str = None
         }
     
     except Exception as e:
-        return {
-            "isConnected": False,
-            "status": "error",
-            "error": str(e)
-        }
-
-@router.post("/integrations/{provider}/sync")
-async def sync_integration(provider: str, user_id: str, org_id: str = None):
-    """Sync the latest data from the integration provider."""
-    try:
-        provider_funcs = get_provider_functions(provider)
-        credentials = await provider_funcs["get_credentials"](user_id, org_id or user_id)
-        items = await provider_funcs["get_items"](credentials)
-
-        return {
-            "isConnected": True,
-            "status": "active",
-            "lastSync": "2025-03-12T12:00:00Z",
-            "workspace": items
-        }
-    
-    except Exception as e:
+        print(f"Sync error for {provider}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Sync error: {str(e)}")
 
-@router.post("/integrations/{provider}/disconnect")
-async def disconnect_integration(provider: str, user_id: str, org_id: str = None):
+@router.post("/{provider}/disconnect")
+async def disconnect_integration(
+    provider: str,
+    request: Request
+):
     """Disconnect an integration and delete stored credentials."""
     try:
-        provider_funcs = get_provider_functions(provider)
+        content_type = request.headers.get('content-type', '')
+        if 'application/json' in content_type:
+            body = await request.json()
+            user_id = body.get('user_id')
+            org_id = body.get('org_id')
+        else:
+            form = await request.form()
+            user_id = form.get('user_id')
+            org_id = form.get('org_id')
+
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Missing user_id")
+
+        print(f"Disconnecting {provider} - user: {user_id}, org: {org_id}")
 
         # Remove credentials from Redis
-        redis_key = f"{provider}_credentials:{org_id or user_id}"
+        redis_key = f"{provider}_credentials:{org_id or user_id}:{user_id}"
         await delete_key_redis(redis_key)
-
-        # Remove from Cassandra (if applicable)
-        cassandra_query = f"DELETE FROM integrations WHERE provider='{provider}' AND user_id='{user_id}'"
-        cassandra.execute(cassandra_query)
 
         return {"status": "success", "message": f"Disconnected {provider} for user {user_id}"}
     
     except Exception as e:
+        print(f"Disconnect error for {provider}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Disconnection error: {str(e)}")
 
-@router.get("/integrations/{provider}/oauth2callback")
+@router.get("/{provider}/oauth2callback", include_in_schema=False)
 async def oauth_callback(provider: str, request: Request):
-    """Handle OAuth2 callback from provider."""
+    """Handle OAuth callback from provider."""
+    print(f"OAuth callback for {provider}")
     try:
         provider_funcs = get_provider_functions(provider)
-        return await provider_funcs["oauth2callback"](request)
-    
+        response = await provider_funcs["oauth2callback"](request)
+        
+        # Add CORS headers to response
+        for key, value in CORS_HEADERS.items():
+            response.headers[key] = value
+        
+        return response
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OAuth2 callback error: {str(e)}")
+        print(f"OAuth callback error for {provider}: {str(e)}")
+        error_message = str(e)
+        return HTMLResponse(
+            content=f"""
+                <html>
+                    <head><title>Integration Error</title></head>
+                    <body>
+                        <h1>Connection Failed</h1>
+                        <p>Failed to connect to the service.</p>
+                        <script>
+                            window.opener.postMessage(
+                                {{ 
+                                    type: '{provider}-oauth-callback',
+                                    success: false,
+                                    error: "{error_message}"
+                                }},
+                                '*'
+                            );
+                            setTimeout(() => window.close(), 1000);
+                        </script>
+                    </body>
+                </html>
+            """,
+            headers=CORS_HEADERS
+        )
+
+@router.options("/{provider}/oauth2callback", include_in_schema=False)
+async def oauth_callback_options(provider: str):
+    """Handle preflight requests for OAuth2 callback."""
+    return Response(content="", headers=CORS_HEADERS)

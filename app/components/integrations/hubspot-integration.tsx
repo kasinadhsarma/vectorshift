@@ -4,15 +4,17 @@ import { useState, useEffect } from "react"
 import { Button } from "@/app/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/app/components/ui/badge"
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { Loader2, CheckCircle2, AlertCircle, Building2, Users } from "lucide-react"
 import {
   authorizeIntegration,
   getIntegrationStatus,
   disconnectIntegration,
-  getHubspotContacts,
   syncIntegrationData,
   IntegrationStatus,
   HubSpotContact,
+  HubSpotCompany,
 } from "@/app/lib/api-client"
 
 interface HubspotIntegrationProps {
@@ -24,6 +26,7 @@ interface HubSpotWorkspace {
   id: string
   name: string
   contacts: HubSpotContact[]
+  companies: HubSpotCompany[]
 }
 
 export function HubspotIntegration({ userId, orgId }: HubspotIntegrationProps) {
@@ -38,31 +41,38 @@ export function HubspotIntegration({ userId, orgId }: HubspotIntegrationProps) {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const status: IntegrationStatus = await getIntegrationStatus('hubspot', userId)
+        const status: IntegrationStatus = await getIntegrationStatus('hubspot', userId, orgId)
         setIsConnected(status.isConnected)
+        setError(status.error || null)
 
-        if (status.isConnected && status.credentials?.workspaceId) {
-          const contacts = await getHubspotContacts(status.credentials.workspaceId)
+        if (status.isConnected && Array.isArray(status.workspace)) {
+          const contacts = status.workspace.filter((item): item is HubSpotContact => 
+            item.type === 'contact'
+          )
+          const companies = status.workspace.filter((item): item is HubSpotCompany => 
+            item.type === 'company'
+          )
           setWorkspace({
-            id: status.credentials.workspaceId,
+            id: 'hubspot',
             name: 'HubSpot Workspace',
-            contacts
+            contacts,
+            companies
           })
-        }
-
-        if (status.error) {
-          setError(status.error)
+        } else {
+          setWorkspace(null)
         }
       } catch (error) {
         console.error('Error checking HubSpot status:', error)
         setError('Failed to check integration status')
+        setIsConnected(false)
+        setWorkspace(null)
       } finally {
         setIsLoading(false)
       }
     }
 
     checkStatus()
-  }, [userId])
+  }, [userId, orgId])
 
   const handleConnect = async () => {
     try {
@@ -82,32 +92,60 @@ export function HubspotIntegration({ userId, orgId }: HubspotIntegrationProps) {
         `width=${width},height=${height},left=${left},top=${top}`
       )
 
-      window.addEventListener('message', async (event) => {
+      const messageHandler = async (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) {
+          return;
+        }
+        
         if (event.data.type === 'hubspot-oauth-callback') {
-          if (event.data.success) {
-            setIsConnected(true)
-            toast({
-              title: "Connected successfully",
-              description: "Successfully connected to HubSpot",
-            })
+          try {
+            if (event.data.success) {
+              setIsConnected(true)
+              toast({
+                title: "Connected successfully",
+                description: "Successfully connected to HubSpot",
+              })
 
-            const contacts = await getHubspotContacts(event.data.workspaceId)
-            setWorkspace({
-              id: event.data.workspaceId,
-              name: 'HubSpot Workspace',
-              contacts
-            })
-          } else {
-            setError('Failed to connect to HubSpot')
+              // Fetch updated status
+              const status = await getIntegrationStatus('hubspot', userId, orgId)
+              if (status.isConnected && Array.isArray(status.workspace)) {
+                const contacts = status.workspace.filter((item): item is HubSpotContact => 
+                  item.type === 'contact'
+                )
+                const companies = status.workspace.filter((item): item is HubSpotCompany => 
+                  item.type === 'company'
+                )
+                setWorkspace({
+                  id: 'hubspot',
+                  name: 'HubSpot Workspace',
+                  contacts,
+                  companies
+                })
+              }
+            } else {
+              setError('Failed to connect to HubSpot')
+              toast({
+                title: "Connection failed",
+                description: event.data.error || "Failed to connect to HubSpot",
+                variant: "destructive",
+              })
+            }
+          } catch (error) {
+            console.error('Error handling OAuth callback:', error)
+            setError('Failed to complete HubSpot connection')
             toast({
-              title: "Connection failed",
-              description: event.data.error || "Failed to connect to HubSpot",
+              title: "Connection error",
+              description: "Failed to complete HubSpot connection",
               variant: "destructive",
             })
+          } finally {
+            authWindow?.close()
           }
-          authWindow?.close()
         }
-      })
+      }
+
+      window.addEventListener('message', messageHandler)
+      return () => window.removeEventListener('message', messageHandler)
     } catch (error) {
       console.error('Error connecting to HubSpot:', error)
       setError('Failed to initiate HubSpot connection')
@@ -145,11 +183,20 @@ export function HubspotIntegration({ userId, orgId }: HubspotIntegrationProps) {
       setIsSyncing(true)
       await syncIntegrationData('hubspot', userId)
 
-      if (workspace) {
-        const contacts = await getHubspotContacts(workspace.id)
+      // Refresh status
+      const status = await getIntegrationStatus('hubspot', userId, orgId)
+      if (status.isConnected && Array.isArray(status.workspace)) {
+        const contacts = status.workspace.filter((item): item is HubSpotContact => 
+          item.type === 'contact'
+        )
+        const companies = status.workspace.filter((item): item is HubSpotCompany => 
+          item.type === 'company'
+        )
         setWorkspace({
-          ...workspace,
-          contacts
+          id: 'hubspot',
+          name: 'HubSpot Workspace',
+          contacts,
+          companies
         })
       }
 
@@ -182,11 +229,11 @@ export function HubspotIntegration({ userId, orgId }: HubspotIntegrationProps) {
       <div className="space-y-2">
         <h3 className="text-lg font-medium">HubSpot Integration</h3>
         <p className="text-sm text-muted-foreground">
-          Connect to your HubSpot workspace to access and sync your contacts.
+          Connect to your HubSpot workspace to access and sync your CRM data.
         </p>
       </div>
 
-      {error && (
+      {error && error !== "Integration not connected" && (
         <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-md">
           <AlertCircle className="h-4 w-4" />
           {error}
@@ -232,25 +279,95 @@ export function HubspotIntegration({ userId, orgId }: HubspotIntegrationProps) {
         )}
       </div>
 
-      {workspace && workspace.contacts.length > 0 && (
-        <div className="border rounded-lg p-4">
-          <h4 className="font-medium mb-2">Connected Contacts</h4>
-          <div className="space-y-2">
-            {workspace.contacts.map(contact => (
-              <div key={contact.id} className="flex justify-between text-sm p-2 bg-muted/50 rounded">
-                <span className="flex flex-col">
-                  <span>{contact.name}</span>
-                  {contact.email && (
-                    <span className="text-xs text-muted-foreground">{contact.email}</span>
+      {workspace && (
+        <Tabs defaultValue="contacts">
+          <TabsList>
+            <TabsTrigger value="contacts" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Contacts
+              {workspace.contacts.length > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {workspace.contacts.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="companies" className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Companies
+              {workspace.companies.length > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {workspace.companies.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="contacts">
+            <Card>
+              <CardHeader>
+                <CardTitle>Contacts</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {workspace.contacts.map(contact => (
+                    <div key={contact.id} className="flex justify-between text-sm p-2 bg-muted/50 rounded">
+                      <span className="flex flex-col">
+                        <span>{contact.name}</span>
+                        {contact.email && (
+                          <span className="text-xs text-muted-foreground">{contact.email}</span>
+                        )}
+                      </span>
+                      <div className="flex items-center gap-4">
+                        {contact.company && (
+                          <Badge variant="outline">{contact.company}</Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          Last modified: {new Date(contact.last_modified_time).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {workspace.contacts.length === 0 && (
+                    <p className="text-center text-sm text-muted-foreground">No contacts found</p>
                   )}
-                </span>
-                <span className="text-muted-foreground">
-                  Last modified: {new Date(contact.last_modified_time).toLocaleDateString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="companies">
+            <Card>
+              <CardHeader>
+                <CardTitle>Companies</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {workspace.companies.map(company => (
+                    <div key={company.id} className="flex justify-between text-sm p-2 bg-muted/50 rounded">
+                      <span className="flex flex-col">
+                        <span>{company.name}</span>
+                        {company.domain && (
+                          <span className="text-xs text-muted-foreground">{company.domain}</span>
+                        )}
+                      </span>
+                      <div className="flex items-center gap-4">
+                        {company.industry && (
+                          <Badge variant="outline">{company.industry}</Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          Last modified: {new Date(company.last_modified_time).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {workspace.companies.length === 0 && (
+                    <p className="text-center text-sm text-muted-foreground">No companies found</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   )

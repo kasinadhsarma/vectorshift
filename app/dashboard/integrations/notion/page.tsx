@@ -9,35 +9,15 @@ import { NotionIntegration } from "@/app/components/integrations/notion-integrat
 import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { Lightbulb, RefreshCw } from "lucide-react"
 
-interface NotionPage {
-  id: string
-  title: string
-  lastEdited: string
-}
+import { NotionPage, NotionDatabase, IntegrationStatus } from "@/app/lib/api-client"
 
-interface NotionDatabase {
-  id: string
-  name: string
-  items: number
-}
-
-interface IntegrationParams {
-  credentials?: Record<string, any>
-  type?: string
-}
-
-interface IntegrationData {
-  isConnected: boolean
-  status: string
+interface IntegrationData extends IntegrationStatus {
   pages?: NotionPage[]
   databases?: NotionDatabase[]
-  error?: string
-  credentials?: Record<string, any>
 }
 
 export default function NotionIntegrationPage() {
   const [data, setData] = useState<IntegrationData | null>(null)
-  const [integrationParams, setIntegrationParams] = useState<IntegrationParams | undefined>()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -104,10 +84,8 @@ export default function NotionIntegrationPage() {
           </CardHeader>
           <CardContent>
             <NotionIntegration
-              user={userId}
-              org={orgId}
-              integrationParams={integrationParams}
-              setIntegrationParams={setIntegrationParams}
+              userId={userId}
+              orgId={orgId}
             />
           </CardContent>
         </Card>
@@ -170,8 +148,18 @@ export default function NotionIntegrationPage() {
                     <tbody>
                       {data.pages?.map((page: NotionPage) => (
                         <tr key={page.id} className="border-b">
-                          <td className="p-2">{page.title}</td>
-                          <td className="p-2">{new Date(page.lastEdited).toLocaleDateString()}</td>
+                          <td className="p-2">{page.title || page.name || 'Untitled'}</td>
+                          <td className="p-2">
+                            {(() => {
+                              const date = page.lastEdited || page.last_modified_time;
+                              if (!date) return 'Never';
+                              try {
+                                return new Date(date).toLocaleDateString();
+                              } catch {
+                                return 'Invalid date';
+                              }
+                            })()}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -199,8 +187,8 @@ export default function NotionIntegrationPage() {
                     <tbody>
                       {data.databases?.map((db: NotionDatabase) => (
                         <tr key={db.id} className="border-b">
-                          <td className="p-2">{db.name}</td>
-                          <td className="p-2">{db.items}</td>
+                          <td className="p-2">{db.name || db.title || 'Untitled'}</td>
+                          <td className="p-2">{db.items || 0}</td>
                         </tr>
                       ))}
                     </tbody>

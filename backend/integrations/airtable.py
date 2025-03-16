@@ -95,7 +95,26 @@ async def oauth2callback_airtable(request: Request):
             expire=token_data.get('expires_in', 7200)
         )
     
-    return HTMLResponse(content="<html><script>window.close();</script></html>")
+    return HTMLResponse(content="""
+        <html>
+            <head><title>Airtable Connection Successful</title></head>
+            <body>
+                <h1>Connection Successful!</h1>
+                <p>You have successfully connected your Airtable account.</p>
+                <script>
+                    window.opener.postMessage(
+                        { 
+                            type: 'airtable-oauth-callback',
+                            success: true,
+                            workspaceId: 'airtable'
+                        },
+                        '*'
+                    );
+                    setTimeout(() => window.close(), 1000);
+                </script>
+            </body>
+        </html>
+    """)
 
 async def get_airtable_credentials(user_id, org_id):
     credentials = await get_value_redis(f'airtable_credentials:{org_id}:{user_id}')
@@ -159,4 +178,3 @@ async def get_items_airtable(credentials) -> list[IntegrationItem]:
             items.append(table_item)
 
     return items
-

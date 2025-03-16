@@ -36,7 +36,22 @@ async def oauth2callback_notion(request: Request):
     """Handle OAuth callback and store credentials"""
     error = request.query_params.get('error')
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        return HTMLResponse(content=f"""
+            <html>
+                <head><title>Notion Connection Failed</title></head>
+                <body>
+                    <h1>Connection Failed</h1>
+                    <p>Error: {error}</p>
+                    <script>
+                        window.opener.postMessage(
+                            {{ type: 'notion-oauth-callback', success: false, error: "{error}" }}, 
+                            '*'
+                        );
+                        setTimeout(() => window.close(), 1000);
+                    </script>
+                </body>
+            </html>
+        """)
     
     state, code = request.query_params.get('state'), request.query_params.get('code')
     if not state or not code:
@@ -57,13 +72,57 @@ async def oauth2callback_notion(request: Request):
         )
         
         if token_response.status_code != 200:
-            raise HTTPException(status_code=token_response.status_code, detail='Failed to get access token')
+            error_message = 'Failed to get access token'
+            return HTMLResponse(content=f"""
+                <html>
+                    <head><title>Notion Connection Failed</title></head>
+                    <body>
+                        <h1>Connection Failed</h1>
+                        <p>Error: {error_message}</p>
+                        <script>
+                            window.opener.postMessage(
+                                {{ type: 'notion-oauth-callback', success: false, error: "{error_message}" }}, 
+                                '*'
+                            );
+                            setTimeout(() => window.close(), 1000);
+                        </script>
+                    </body>
+                </html>
+            """)
         
         credentials = token_response.json()
         await add_key_value_redis(f'notion_credentials:{org_id}:{user_id}', json.dumps(credentials), expire=3600)
         await delete_key_redis(f'notion_state:{state}')
     
-    return HTMLResponse("<html><script>window.close();</script></html>")
+    return HTMLResponse(content="""
+        <html>
+            <head><title>Notion Connection Successful</title></head>
+            <body>
+                <h1>Connection Successful!</h1>
+                <p>You have successfully connected your Notion account.</p>
+                <script>
+                    try {
+                        if (window.opener) {
+                            window.opener.postMessage(
+                                { 
+                                    type: 'notion-oauth-callback', 
+                                    success: true,
+                                    redirect: "/dashboard/integrations/notion"
+                                }, 
+                                window.location.origin
+                            );
+                            setTimeout(() => window.close(), 500);
+                        } else {
+                            window.location.href = "/dashboard/integrations/notion";
+                        }
+                    } catch (e) {
+                        console.error('Error in popup:', e);
+                        document.body.innerHTML = '<h1>Error</h1><p>An error occurred during authentication.</p><pre>' + e.toString() + '</pre>';
+                    }
+                </script>
+            </body>
+        </html>
+    """)
 
 async def get_notion_credentials(user_id: str, org_id: str):
     """Retrieve stored Notion credentials"""
@@ -72,7 +131,7 @@ async def get_notion_credentials(user_id: str, org_id: str):
         raise HTTPException(status_code=400, detail='No credentials found')
     return json.loads(credentials)
 
-async def get_items_notion(credentials: dict) -> dict:
+async def get_items_notion(credentials: dict) -> list[IntegrationItem]:
     """Retrieve Notion databases and pages"""
     credentials = json.loads(credentials) if isinstance(credentials, str) else credentials
     access_token = credentials.get('access_token')
@@ -91,28 +150,54 @@ async def get_items_notion(credentials: dict) -> dict:
         raise HTTPException(status_code=500, detail='Failed to fetch Notion data')
     
     user_response, db_response, page_response = responses
+    items = []
+
+    # Process databases
+    for db in db_response.json().get('results', []):
+        items.append(IntegrationItem(
+            id=db['id'],
+            type='database',
+            name=db.get('title', [{}])[0].get('text', {}).get('content', 'Untitled'),
+            items=len(db.get('properties', {})),
+            last_modified_time=db.get('last_edited_time'),
+            source='notion'
+        ))
     
-    databases = [
-        {
-            'id': db['id'],
-            'name': db.get('title', [{}])[0].get('text', {}).get('content', 'Untitled'),
-            'items': len(db.get('properties', {})),
-        } for db in db_response.json().get('results', [])
-    ]
+    # Process pages
+    for page in page_response.json().get('results', []):
+        try:
+            # Handle different page title structures
+            properties = page.get('properties', {})
+            title_prop = None
+            
+            # Try to find title in properties
+            for prop in properties.values():
+                if prop.get('type') == 'title':
+                    title_prop = prop
+                    break
+            
+            # Extract title from property
+            if title_prop and title_prop.get('title'):
+                title_parts = []
+                for text_obj in title_prop['title']:
+                    if text_obj.get('type') == 'text':
+                        title_parts.append(text_obj.get('text', {}).get('content', ''))
+                title = ' '.join(title_parts) if title_parts else 'Untitled'
+            else:
+                # Fallback to page title if properties don't contain it
+                title = page.get('title', [{}])[0].get('text', {}).get('content', 'Untitled')
+            
+            items.append(IntegrationItem(
+                id=page['id'],
+                type='page',
+                title=title,
+                name=title,  # Add name field for compatibility
+                last_modified_time=page.get('last_edited_time'),
+                source='notion'
+            ))
+        except Exception as e:
+            print(f"Error processing Notion page {page.get('id')}: {str(e)}")
+            # Continue processing other pages even if one fails
+            continue
     
-    pages = [
-        {
-            'id': page['id'],
-            'title': page.get('properties', {}).get('title', {}).get('title', [{}])[0].get('text', {}).get('content', 'Untitled'),
-            'lastEdited': page.get('last_edited_time'),
-        } for page in page_response.json().get('results', [])
-    ]
-    
-    return {
-        'isConnected': True,
-        'status': 'active',
-        'lastSync': user_response.json().get('bot', {}).get('last_seen'),
-        'databases': databases,
-        'pages': pages,
-        'credentials': credentials,
-    }
+    return items
