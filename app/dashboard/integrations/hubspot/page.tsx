@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
@@ -9,26 +9,8 @@ import { HubspotIntegration } from "@/app/components/integrations/hubspot-integr
 import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { BarChart3, RefreshCw } from "lucide-react"
 
-interface HubSpotContact {
-  id: string
-  name: string
-  email?: string
-  company?: string
-  lastModified: string
-}
-
-interface HubSpotData {
-  contacts?: HubSpotContact[]
-  companies?: any[]
-  deals?: any[]
-  isConnected: boolean
-  status: 'active' | 'inactive' | 'error'
-  lastSync?: string
-  error?: string
-}
-
 export default function HubspotIntegrationPage() {
-  const [data, setData] = useState<HubSpotData | null>(null)
+  const [data, setData] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -41,7 +23,7 @@ export default function HubspotIntegrationPage() {
     setIsLoading(true)
     setError(null)
     try {
-      const status = await getIntegrationStatus("hubspot", userId, orgId)
+      const status = await getIntegrationStatus("hubspot", userId)
       setIsConnected(status.isConnected)
       
       if (!status.isConnected) {
@@ -49,34 +31,15 @@ export default function HubspotIntegrationPage() {
       }
 
       if (status.status === "active") {
-        // Fetch actual HubSpot data using credentials
-        const hubspotData = await getIntegrationData(
-          "hubspot",
-          status.credentials,
-          userId,
-          orgId
-        )
-        setData({
-          ...status,
-          ...hubspotData
-        })
+        setData(status.workspace)
       } else {
-        await syncIntegrationData("hubspot", userId, orgId)
-        const updatedStatus = await getIntegrationStatus("hubspot", userId, orgId)
-        const hubspotData = await getIntegrationData(
-          "hubspot",
-          updatedStatus.credentials,
-          userId,
-          orgId
-        )
-        setData({
-          ...updatedStatus,
-          ...hubspotData
-        })
+        await syncIntegrationData("hubspot", userId)
+        const updatedStatus = await getIntegrationStatus("hubspot", userId)
+        setData(updatedStatus.workspace)
       }
-    } catch (err) {
-      console.error("Error fetching data:", err)
-      setError(err instanceof Error ? err.message : "An unknown error occurred")
+    } catch (error) {
+      console.error("Error fetching data:", error)
+      setError(error.message)
     } finally {
       setIsLoading(false)
     }
@@ -118,9 +81,6 @@ export default function HubspotIntegrationPage() {
               userId={userId}
               orgId={orgId}
             />
-            {error && (
-              <p className="text-sm text-destructive mt-2">{error}</p>
-            )}
           </CardContent>
         </Card>
 
@@ -182,20 +142,13 @@ export default function HubspotIntegrationPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.contacts?.map((contact) => (
+                      {data.contacts?.map((contact: any) => (
                         <tr key={contact.id} className="border-b">
                           <td className="p-2">{contact.name}</td>
                           <td className="p-2">{contact.email || "N/A"}</td>
                           <td className="p-2">{contact.company || "N/A"}</td>
                         </tr>
                       ))}
-                      {(!data.contacts || data.contacts.length === 0) && (
-                        <tr>
-                          <td colSpan={3} className="text-center py-4 text-muted-foreground">
-                            No contacts found
-                          </td>
-                        </tr>
-                      )}
                     </tbody>
                   </table>
                 </div>

@@ -1,92 +1,47 @@
 from fastapi import FastAPI, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from integrations import slack
-from integrations.airtable import authorize_airtable, get_items_airtable, oauth2callback_airtable, get_airtable_credentials
-from integrations.notion import authorize_notion, get_items_notion, oauth2callback_notion, get_notion_credentials
-from integrations.hubspot import authorize_hubspot, get_hubspot_credentials, get_items_hubspot, oauth2callback_hubspot
-import json 
+from fastapi.responses import JSONResponse
+import json
+
+from auth_routes import router as auth_router
+from routes.dashboard import router as dashboard_router
+from routes.profiles import router as profile_router
+from routes.integrations import router as integrations_router
+from integrations.google_auth import google_auth_url, google_auth_callback, get_google_user_info
+
 app = FastAPI()
 
-origins = [
-    "http://localhost:3000",  # React app address
-]
-
+# Enable CORS for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
 )
+
+# Include routers with correct prefixes
+app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
+app.include_router(dashboard_router, prefix="/api", tags=["dashboard"])
+app.include_router(profile_router, prefix="/api", tags=["profiles"])
+# Since integration routes already include /integrations in their paths, we just need /api prefix
+app.include_router(integrations_router, prefix="/api", tags=["integrations"])
 
 @app.get('/')
 def read_root():
     return {'Ping': 'Pong'}
 
 
-# Airtable
-@app.post('/integrations/airtable/authorize')
-async def authorize_airtable_integration(user_id: str = Form(...), org_id: str = Form(...)):
-    return await authorize_airtable(user_id, org_id)
+# Google Authentication
+@app.get('/auth/google/url')
+async def get_google_auth_url():
+    auth_url = await google_auth_url()
+    return {"url": auth_url}
 
-@app.get('/integrations/airtable/oauth2callback')
-async def oauth2callback_airtable_integration(request: Request):
-    return await oauth2callback_airtable(request)
+@app.get('/auth/google/callback')
+async def google_callback(request: Request):
+    return await google_auth_callback(request)
 
-@app.post('/integrations/airtable/credentials')
-async def get_airtable_credentials_integration(user_id: str = Form(...), org_id: str = Form(...)):
-    return await get_airtable_credentials(user_id, org_id)
-
-@app.post('/integrations/airtable/load')
-async def get_airtable_items(credentials: str = Form(...)):
-    return await get_items_airtable(credentials)
-
-
-# Notion
-@app.post('/integrations/notion/authorize')
-async def authorize_notion_integration(user_id: str = Form(...), org_id: str = Form(...)):
-    return await authorize_notion(user_id, org_id)
-
-@app.get('/integrations/notion/oauth2callback')
-async def oauth2callback_notion_integration(request: Request):
-    return await oauth2callback_notion(request)
-
-@app.post('/integrations/notion/credentials')
-async def get_notion_credentials_integration(user_id: str = Form(...), org_id: str = Form(...)):
-    return await get_notion_credentials(user_id, org_id)
-
-@app.post('/integrations/notion/load')
-async def get_notion_items(credentials: str = Form(...)):
-    return await get_items_notion(credentials)
-
-# HubSpot
-@app.post('/integrations/hubspot/authorize')
-async def authorize_hubspot_integration(user_id: str = Form(...), org_id: str = Form(...)):
-    return await authorize_hubspot(user_id, org_id)
-
-@app.get('/integrations/hubspot/oauth2callback')
-async def oauth2callback_hubspot_integration(request: Request):
-    return await oauth2callback_hubspot(request)
-
-@app.post('/integrations/hubspot/credentials')
-async def get_hubspot_credentials_integration(user_id: str = Form(...), org_id: str = Form(...)):
-    return await get_hubspot_credentials(user_id, org_id)
-
-@app.post('/integrations/hubspot/get_hubspot_items')
-async def load_slack_data_integration(credentials: str = Form(...)):
-    return await get_items_hubspot(credentials)
-@app.post("/integrations/slack/authorize")
-async def slack_authorize(user_id: str = Form(...), org_id: str = Form(...)):
-    return await slack.authorize_slack(user_id, org_id)
-
-@app.get("/integrations/slack/callback")
-async def slack_callback(request: Request):
-    return await slack.oauth2callback_slack(request)
-
-@app.post("/integrations/slack/credentials")
-async def slack_credentials(user_id: str = Form(...), org_id: str = Form(...)):
-    return await slack.get_slack_credentials(user_id, org_id)
-
-@app.post("/integrations/slack/load")
-async def load_slack_data(credentials: str = Form(...)):
-    return await slack.get_items_slack(json.loads(credentials))
+@app.get('/api/auth/google/user')
+async def get_user_info(token: str):
+    return await get_google_user_info(token)

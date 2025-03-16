@@ -8,7 +8,7 @@ import { Button } from "@/app/components/ui/button"
 import { Input } from "@/app/components/ui/input"
 import { Label } from "@/app/components/ui/label"
 import { Switch } from "@/app/components/ui/switch"
-import { useToast } from "@/app/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 
 export default function AccountSettingsPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -171,3 +171,4 @@ export default function AccountSettingsPage() {
     </div>
   )
 }
+

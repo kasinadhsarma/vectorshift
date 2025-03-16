@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/app/components/ui/button"
-import { useToast } from "@/app/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/app/components/ui/badge"
 import { Loader2, CheckCircle2, AlertCircle, Lock, Unlock } from "lucide-react"
 import {

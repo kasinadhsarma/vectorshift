@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/app/components/ui/button"
 import { Card, CardContent } from "@/app/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
-import { useToast } from "@/app/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { FileSpreadsheet, Lightbulb, MessageSquare, BarChart3, Loader2 } from "lucide-react"
 import { Input } from "@/app/components/ui/input"
 import { Label } from "@/app/components/ui/label"
@@ -203,3 +203,4 @@ export function IntegrationForm({ onIntegrationData }: IntegrationFormProps) {
     </div>
   )
 }
+

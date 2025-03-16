@@ -1,42 +1,24 @@
-"use client";
+"use client"
 
-import { useEffect, useRef, useState } from "react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card";
-import { Button } from "@/app/components/ui/button";
-import { Input } from "@/app/components/ui/input";
-import { Label } from "@/app/components/ui/label";
-import { useToast } from "@/app/components/ui/use-toast";
-import { Icons } from "@/app/components/icons";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select";
-import { getUserProfile, updateUserProfile, uploadProfileImage } from "@/app/lib/api-client";
+import { useEffect, useRef, useState } from "react"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/app/components/ui/card"
+import { Button } from "@/app/components/ui/button"
+import { Input } from "@/app/components/ui/input"
+import { Label } from "@/app/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
+import { Icons } from "@/app/components/icons"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/app/components/ui/select"
+import { getUserProfile, updateUserProfile, uploadProfileImage } from "@/app/lib/api-client"
 
 interface Profile {
   email: string;
-  firstName: string;
-  lastName: string;
+  fullName: string;
   displayName: string;
   avatarUrl: string;
   company: string;
   jobTitle: string;
   timezone: string;
   preferences: Record<string, string>;
-  fullName: string;
-}
-
-interface UserProfile {
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  displayName?: string;
-  avatarUrl?: string;
-  company?: string;
-  jobTitle?: string;
-  timezone?: string;
-  preferences?: Record<string, string>;
-}
-
-interface UploadResponse {
-  imageUrl: string;
 }
 
 const timezones = [
@@ -48,168 +30,145 @@ const timezones = [
   "Asia/Dubai",
   "Asia/Kolkata",
   "Australia/Sydney"
-];
+]
 
 export default function ProfileSettingsPage() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [errors, setErrors] = useState<Partial<Profile>>({});
-  const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [errors, setErrors] = useState<Partial<Profile>>({})
+  const { toast } = useToast()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [profile, setProfile] = useState<Profile>({
     email: "",
     fullName: "",
-    firstName: "",
-    lastName: "",
     displayName: "",
     avatarUrl: "",
     company: "",
     jobTitle: "",
     timezone: "UTC",
     preferences: {}
-  });
+  })
 
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        const email = localStorage.getItem('userEmail');
+        // Get email from localStorage or context
+        const email = localStorage.getItem('userEmail')
         if (!email) {
-          throw new Error('User email not found');
+          throw new Error('User email not found')
         }
 
-        const userProfile = (await getUserProfile(email)) as UserProfile;
-        if (!userProfile) {
-          throw new Error('User profile not found');
-        }
-        const profileData: Profile = {
-          firstName: userProfile.firstName || "",
-          lastName: userProfile.lastName || "",
-          fullName: `${userProfile.firstName || ""} ${userProfile.lastName || ""}`.trim(),
-          displayName: userProfile.displayName || "",
-          avatarUrl: userProfile.avatarUrl || "",
-          company: userProfile.company || "",
-          jobTitle: userProfile.jobTitle || "",
-          timezone: userProfile.timezone || "UTC",
-          preferences: userProfile.preferences || {},
-          email: email
-        };
-        setProfile(profileData);
+        const profileData = await getUserProfile(email)
+        setProfile(profileData)
       } catch (error) {
         toast({
           title: "Error",
           description: "Failed to load profile",
           variant: "destructive",
-        });
+        })
       } finally {
-        setIsLoading(false);
+        setIsLoading(false)
       }
-    };
+    }
 
-    loadProfile();
-  }, [toast]);
+    loadProfile()
+  }, [toast])
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<Profile> = {};
+    const newErrors: Partial<Profile> = {}
 
     if (!profile.fullName?.trim()) {
-      newErrors.fullName = "Name is required";
+      newErrors.fullName = "Name is required"
     }
 
     if (!profile.email?.trim()) {
-      newErrors.email = "Email is required";
+      newErrors.email = "Email is required"
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email)) {
-      newErrors.email = "Please enter a valid email address";
+      newErrors.email = "Please enter a valid email address"
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
+  }
 
   const handleAvatarClick = () => {
-    fileInputRef.current?.click();
-  };
+    fileInputRef.current?.click()
+  }
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]
+    if (!file) return
 
     if (file.size > 5 * 1024 * 1024) {
       toast({
         title: "Error",
         description: "Image size should be less than 5MB",
         variant: "destructive",
-      });
-      return;
+      })
+      return
     }
 
     try {
-      setIsSaving(true);
-      const avatarUrl = await uploadProfileImage(file);
-      setProfile({ ...profile, avatarUrl });
+      setIsSaving(true)
+      const avatarUrl = await uploadProfileImage(file)
+      setProfile({ ...profile, avatarUrl })
 
-      await updateUserProfile(profile.email, { avatarUrl } as Partial<UserProfile>);
+      // Update profile with new avatar URL
+      await updateUserProfile(profile.email, { avatarUrl })
 
       toast({
         title: "Success",
         description: "Avatar uploaded successfully",
-      });
+      })
     } catch (error) {
       toast({
         title: "Error",
         description: "Failed to upload avatar",
         variant: "destructive",
-      });
+      })
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
 
     if (!validateForm()) {
       toast({
         title: "Error",
         description: "Please fix the errors in the form",
         variant: "destructive",
-      });
-      return;
+      })
+      return
     }
 
-    setIsSaving(true);
-    const { fullName, ...updatedProfile } = profile;
-    const [firstName, lastName] = fullName.split(' ');
-    
-    const profileData: Partial<UserProfile> = {
-      ...updatedProfile,
-      firstName,
-      lastName
-    };
+    setIsSaving(true)
 
     try {
-      await updateUserProfile(profile.email, profileData as Partial<UserProfile>);
+      await updateUserProfile(profile.email, profile)
       toast({
         title: "Profile updated",
-        description: "Your profile has been updated successfully",
-      });
+        description: "Your profile has been updated successfully.",
+      })
     } catch (error) {
       toast({
         title: "Error",
-        description: "There was an error updating your profile",
+        description: "There was an error updating your profile.",
         variant: "destructive",
-      });
+      })
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Icons.spinner className="h-8 w-8 animate-spin" />
       </div>
-    );
+    )
   }
 
   return (
@@ -263,8 +222,8 @@ export default function ProfileSettingsPage() {
                   id="fullName"
                   value={profile.fullName}
                   onChange={(e) => {
-                    setProfile({ ...profile, fullName: e.target.value });
-                    if (errors.fullName) setErrors({ ...errors, fullName: undefined });
+                    setProfile({ ...profile, fullName: e.target.value })
+                    if (errors.fullName) setErrors({ ...errors, fullName: undefined })
                   }}
                   className={errors.fullName ? "border-destructive" : ""}
                   disabled={isSaving}
@@ -290,11 +249,11 @@ export default function ProfileSettingsPage() {
                   type="email"
                   value={profile.email}
                   onChange={(e) => {
-                    setProfile({ ...profile, email: e.target.value });
-                    if (errors.email) setErrors({ ...errors, email: undefined });
+                    setProfile({ ...profile, email: e.target.value })
+                    if (errors.email) setErrors({ ...errors, email: undefined })
                   }}
                   className={errors.email ? "border-destructive" : ""}
-                  disabled={true}
+                  disabled={true} // Email should not be editable
                 />
                 {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
               </div>
@@ -359,5 +318,5 @@ export default function ProfileSettingsPage() {
         </Card>
       </form>
     </div>
-  );
+  )
 }

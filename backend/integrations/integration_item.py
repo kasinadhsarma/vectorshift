@@ -33,3 +33,4 @@ class IntegrationItem:
         self.delta = delta
         self.drive_id = drive_id
         self.visibility = visibility
+

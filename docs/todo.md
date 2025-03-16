@@ -3,7 +3,7 @@
   - Navigate to the `/app` directory and run:  
     ```bash
     npm install
-    npm run dev
+    npm run start
     ```
   - This ensures that all required frontend libraries are installed and the application runs correctly.
 

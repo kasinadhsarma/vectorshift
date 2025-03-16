@@ -1,14 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { getIntegrationStatus, syncIntegrationData, getIntegrationData } from "@/app/lib/api-client"
+import { useState } from "react"
+import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card"
 import { Button } from "@/app/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/tabs"
 import { NotionIntegration } from "@/app/components/integrations/notion-integration"
 import { DataVisualization } from "@/app/components/dashboard/data-visualization"
 import { Lightbulb, RefreshCw } from "lucide-react"
-import { IntegrationHeader } from "@/app/components/integrations/shared/integration-header"
 
 interface NotionPage {
   id: string
@@ -22,7 +21,10 @@ interface NotionDatabase {
   items: number
 }
 
-import { NotionCredentials, IntegrationParams } from "@/app/components/integrations/types"
+interface IntegrationParams {
+  credentials?: Record<string, any>
+  type?: string
+}
 
 interface IntegrationData {
   isConnected: boolean
@@ -44,46 +46,14 @@ export default function NotionIntegrationPage() {
   const userId = "user123"
   const orgId = "org456"
 
-  // Check connection status on mount
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        const status = await getIntegrationStatus("notion", userId, orgId)
-        setIsConnected(status.isConnected)
-        if (status.isConnected && status.credentials) {
-          // Transform credentials to match NotionCredentials interface
-          const processedCreds = status.credentials.credentials || status.credentials
-          const notionCreds: NotionCredentials = {
-            access_token: processedCreds.access_token || processedCreds.accessToken,
-            bot_id: processedCreds.bot_id || processedCreds.botId || '',
-            workspace_name: processedCreds.workspace_name,
-            workspace_id: processedCreds.workspace_id || processedCreds.workspaceId,
-            owner: processedCreds.owner
-          }
-          setIntegrationParams({
-            credentials: notionCreds,
-            type: "Notion",
-          })
-          setData(status)
-        }
-      } catch (error) {
-        console.error("Error checking connection:", error)
-        setError(error instanceof Error ? error.message : "Failed to check connection status")
-      }
-    }
-
-    checkConnection()
-  }, [userId, orgId])
-
   const fetchData = async () => {
     setIsLoading(true)
     setError(null)
-    
     try {
-      // First check/update connection status
       const status = await getIntegrationStatus("notion", userId, orgId)
       setIsConnected(status.isConnected)
-
+      setData(status)
+      
       if (!status.isConnected) {
         throw new Error("Notion is not connected")
       }
@@ -91,29 +61,7 @@ export default function NotionIntegrationPage() {
       if (status.status !== "active") {
         await syncIntegrationData("notion", userId, orgId)
         const updatedStatus = await getIntegrationStatus("notion", userId, orgId)
-        status.status = updatedStatus.status
-      }
-
-      // Then fetch the actual data if we have credentials
-      if (integrationParams?.credentials) {
-        console.log("Fetching Notion data with credentials:", {
-          ...integrationParams.credentials,
-          access_token: "[REDACTED]"
-        })
-
-        const notionData = await getIntegrationData(
-          "notion", 
-          integrationParams.credentials,
-          userId, 
-          orgId
-        )
-
-        setData({
-          ...status,
-          ...notionData
-        })
-      } else {
-        setData(status)
+        setData(updatedStatus)
       }
     } catch (err) {
       console.error("Error fetching data:", err)
@@ -126,20 +74,21 @@ export default function NotionIntegrationPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <IntegrationHeader 
-          title="Notion Integration"
-          description="Connect and manage your Notion workspace"
-          icon={<Lightbulb className="h-6 w-6" />}
-        />
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={fetchData}
-          disabled={isLoading || !isConnected}
-        >
-          <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          <span className="sr-only">Refresh data</span>
-        </Button>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Notion Integration</h1>
+          <p className="text-muted-foreground">Connect and manage your Notion workspace</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={fetchData}
+            disabled={isLoading || !isConnected}
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            <span className="sr-only">Refresh data</span>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -181,9 +130,6 @@ export default function NotionIntegrationPage() {
                     "Load Notion Data"
                   )}
                 </Button>
-                {error && (
-                  <p className="text-sm text-destructive">{error}</p>
-                )}
               </div>
             ) : (
               <div className="text-center py-4">

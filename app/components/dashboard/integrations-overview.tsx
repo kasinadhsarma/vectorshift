@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/app/components/ui/ta
 import { Badge } from "@/app/components/ui/badge"
 import { Button } from "@/app/components/ui/button"
 import { BarChart3, FileSpreadsheet, Lightbulb, MessageSquare } from "lucide-react"
-import { useToast } from "@/app/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { getIntegrationStatus, syncIntegrationData } from "@/app/lib/api-client"
 import { type } from "os"

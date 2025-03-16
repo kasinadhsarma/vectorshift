@@ -1,68 +1,101 @@
-from fastapi import Request, HTTPException, Form
+import json
+import secrets
+import os
+from fastapi import Request, HTTPException
 from fastapi.responses import HTMLResponse
 import httpx
-import json
-import os
+import asyncio
 from dotenv import load_dotenv
+from integrations.integration_item import IntegrationItem
 from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
-import secrets
 
 load_dotenv()
 
-def get_slack_config():
-    return (
-        os.environ.get('SLACK_CLIENT_ID'),
-        os.environ.get('SLACK_CLIENT_SECRET'),
-        os.environ.get('SLACK_REDIRECT_URI')
-    )
+CLIENT_ID = os.getenv('SLACK_CLIENT_ID')
+CLIENT_SECRET = os.getenv('SLACK_CLIENT_SECRET')
+REDIRECT_URI = os.getenv('SLACK_REDIRECT_URI')
+AUTHORIZATION_URL = 'https://slack.com/oauth/v2/authorize'
 
-async def authorize_slack(user_id: str, org_id: str) -> str:
-    client_id, _, redirect_uri = get_slack_config()
-    if not client_id:
-        raise HTTPException(status_code=503, detail="Slack integration not configured")
+async def authorize_slack(user_id, org_id):
+    state = secrets.token_urlsafe(32)
+    state_data = {
+        'state': state,
+        'user_id': user_id,
+        'org_id': org_id
+    }
+    encoded_state = json.dumps(state_data)
+    await add_key_value_redis(f'slack_state:{org_id}:{user_id}', encoded_state, expire=600)
     
-    state = {'state': secrets.token_urlsafe(32), 'user_id': user_id, 'org_id': org_id}
-    await add_key_value_redis(f'slack_state:{org_id}:{user_id}', json.dumps(state), expire=600)
-    
-    scopes = "channels:read users:read"
-    auth_url = (
-        f"https://slack.com/oauth/v2/authorize?"
-        f"client_id={client_id}&"
-        f"redirect_uri={redirect_uri}&"
-        f"scope={scopes}&"
-        f"state={json.dumps(state)}"
-    )
+    scope = 'channels:read,chat:write,team:read,users:read'
+    auth_url = f'{AUTHORIZATION_URL}?client_id={CLIENT_ID}&scope={scope}&redirect_uri={REDIRECT_URI}&state={state}'
     return auth_url
 
 async def oauth2callback_slack(request: Request):
+    if request.query_params.get('error'):
+        raise HTTPException(status_code=400, detail=request.query_params.get('error'))
+    
     code = request.query_params.get('code')
-    state = json.loads(request.query_params.get('state'))
-    user_id, org_id = state['user_id'], state['org_id']
-    
-    saved_state = json.loads(await get_value_redis(f'slack_state:{org_id}:{user_id}'))
-    if state['state'] != saved_state['state']:
-        raise HTTPException(status_code=400, detail="State mismatch")
-    
-    client_id, client_secret, redirect_uri = get_slack_config()
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            'https://slack.com/api/oauth.v2.access',
-            data={'client_id': client_id, 'client_secret': client_secret, 'code': code, 'redirect_uri': redirect_uri}
-        )
-    credentials = response.json()
-    await add_key_value_redis(f'slack_credentials:{org_id}:{user_id}', json.dumps(credentials))
-    return HTMLResponse("<script>window.close();</script>")
+    state = request.query_params.get('state')
+    state_data = json.loads(state)
 
-async def get_slack_credentials(user_id: str, org_id: str) -> dict:
+    user_id = state_data.get('user_id')
+    org_id = state_data.get('org_id')
+
+    saved_state = await get_value_redis(f'slack_state:{org_id}:{user_id}')
+    if not saved_state or state != json.loads(saved_state).get('state'):
+        raise HTTPException(status_code=400, detail='State does not match.')
+
+    async with httpx.AsyncClient() as client:
+        response, _ = await asyncio.gather(
+            client.post(
+                'https://slack.com/api/oauth.v2.access',
+                data={
+                    'code': code,
+                    'client_id': CLIENT_ID,
+                    'client_secret': CLIENT_SECRET,
+                    'redirect_uri': REDIRECT_URI
+                }
+            ),
+            delete_key_redis(f'slack_state:{org_id}:{user_id}'),
+        )
+
+    await add_key_value_redis(f'slack_credentials:{org_id}:{user_id}', json.dumps(response.json()), expire=600)
+    
+    return HTMLResponse(content="<html><script>window.close();</script></html>")
+
+async def get_slack_credentials(user_id, org_id):
     credentials = await get_value_redis(f'slack_credentials:{org_id}:{user_id}')
     if not credentials:
-        raise HTTPException(status_code=404, detail="No credentials found")
-    return json.loads(credentials)
+        raise HTTPException(status_code=400, detail='No credentials found.')
+    credentials = json.loads(credentials)
+    await delete_key_redis(f'slack_credentials:{org_id}:{user_id}')
+    return credentials
 
-async def get_items_slack(credentials: dict):
+async def get_items_slack(credentials) -> list[IntegrationItem]:
+    credentials = json.loads(credentials)
+    access_token = credentials.get('access_token')
+    
+    if not access_token:
+        raise HTTPException(status_code=400, detail='Invalid credentials')
+
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            'https://slack.com/api/users.list',
-            headers={'Authorization': f"Bearer {credentials['access_token']}"}
+            'https://slack.com/api/conversations.list',
+            headers={'Authorization': f'Bearer {access_token}'}
         )
-        return response.json().get('members', [])
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=400, detail='Failed to fetch Slack channels')
+
+        channels = response.json().get('channels', [])
+        return [
+            IntegrationItem(
+                id=channel['id'],
+                type='channel',
+                name=channel['name'],
+                creation_time=channel.get('created'),
+                visibility=not channel['is_private']
+            )
+            for channel in channels
+        ]
+

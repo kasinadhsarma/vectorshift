@@ -39,7 +39,7 @@ export default function AirtableIntegrationPage() {
       }
     } catch (error) {
       console.error("Error fetching data:", error)
-      setError(error instanceof Error ? error.message : 'An unknown error occurred')
+      setError(error.message)
     } finally {
       setIsLoading(false)
     }
