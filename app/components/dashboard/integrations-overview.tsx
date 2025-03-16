@@ -17,7 +17,7 @@ interface Integration {
   icon: React.ReactNode
   status: 'active' | 'inactive' | 'error'
   lastSync?: string
-  error?: string
+  error?: string | null // Changed to allow null
 }
 
 const INTEGRATIONS: Omit<Integration, "status" | "lastSync" | "error">[] = [
@@ -74,7 +74,7 @@ export function IntegrationsOverview({ onSelectIntegration, activeIntegration }:
               return {
                 ...integration,
                 status: 'error',
-                error: 'Failed to fetch status',
+                error: error instanceof Error ? error.message : undefined
               }
             }
           })
@@ -105,12 +105,21 @@ export function IntegrationsOverview({ onSelectIntegration, activeIntegration }:
       
       // Refresh the status after sync
       const status = await getIntegrationStatus(integrationId, userId)
+      
+      // Fixed the type issue by explicitly typing the updated integration
       setIntegrations(current =>
-        current.map(integration =>
-          integration.id === integrationId
-            ? { ...integration, status: status.status, lastSync: status.lastSync, error: status.error }
-            : integration
-        )
+        current.map(integration => {
+          if (integration.id === integrationId) {
+            const updatedIntegration: Integration = {
+              ...integration,
+              status: status.status as 'active' | 'inactive' | 'error',
+              lastSync: status.lastSync,
+              error: status.error
+            };
+            return updatedIntegration;
+          }
+          return integration;
+        })
       )
 
       toast({

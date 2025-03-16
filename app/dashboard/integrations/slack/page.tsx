@@ -21,7 +21,7 @@ interface IntegrationData {
   isConnected: boolean
   status: string
   workspace?: SlackChannel[]
-  error?: string
+  error?: string | null
 }
 
 export default function SlackIntegrationPage() {

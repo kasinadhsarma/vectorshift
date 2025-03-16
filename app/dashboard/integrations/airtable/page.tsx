@@ -20,7 +20,7 @@ interface IntegrationData {
   isConnected: boolean
   status: string
   workspace?: AirtableBase[]
-  error?: string
+  error?: string // Changed from string | null | undefined to string | undefined
 }
 
 export default function AirtableIntegrationPage() {
@@ -55,7 +55,7 @@ export default function AirtableIntegrationPage() {
       const typedData: IntegrationData = {
         isConnected: status.isConnected,
         status: status.status,
-        error: status.error,
+        error: status.error || undefined, // Convert null to undefined
         workspace: status.workspace && Array.isArray(status.workspace) && isAirtableBaseArray(status.workspace) 
           ? status.workspace 
           : []
@@ -70,7 +70,7 @@ export default function AirtableIntegrationPage() {
         const updatedTypedData: IntegrationData = {
           isConnected: updatedStatus.isConnected,
           status: updatedStatus.status,
-          error: updatedStatus.error,
+          error: updatedStatus.error || undefined, // Convert null to undefined
           workspace: updatedStatus.workspace && Array.isArray(updatedStatus.workspace) && isAirtableBaseArray(updatedStatus.workspace)
             ? updatedStatus.workspace
             : []
