@@ -107,13 +107,13 @@ async def oauth2callback_notion(request: Request):
                                 { 
                                     type: 'notion-oauth-callback', 
                                     success: true,
-                                    redirect: "/dashboard/integrations/notion"
+                                    redirect: "http://localhost:8000/api/integrations/notion/oauth2callback"
                                 }, 
                                 window.location.origin
                             );
                             setTimeout(() => window.close(), 500);
                         } else {
-                            window.location.href = "/dashboard/integrations/notion";
+                            window.location.href = "http://localhost:8000/api/integrations/notion/oauth2callback";
                         }
                     } catch (e) {
                         console.error('Error in popup:', e);
@@ -122,7 +122,12 @@ async def oauth2callback_notion(request: Request):
                 </script>
             </body>
         </html>
-    """)
+    """, headers={
+        "Access-Control-Allow-Origin": "http://localhost:3000",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Credentials": "true",
+    })
 
 async def get_notion_credentials(user_id: str, org_id: str):
     """Retrieve stored Notion credentials"""
